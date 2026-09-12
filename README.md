@@ -30,19 +30,25 @@
    - Idempotentny komentarz pod Pull Requestem ze statusem, tabelą delty i rozwijanym panelem `<details>` z uzasadnieniem LLM.
 8. **Dashboard Historii & Trendów ([dashboard.py](file:///c:/Users/rakpa/Documents/Ai_Engineer_Portfolio/TheJudge/src/judgekit/dashboard.py)):**
    - Aplikacja Streamlit + Plotly połączona z bazą SQLite `data/eval_history.db` do inspekcji halucynacji i trendów SLO w czasie.
-9. **RAG System Adapter ([rag_adapter.py](file:///c:/Users/rakpa/Documents/Ai_Engineer_Portfolio/TheJudge/src/judgekit/rag_adapter.py)):**
+9. **RAG System Adapter ([rag_adapter.py](https://github.com/Devilynpl/TheJudge/blob/main/src/judgekit/rag_adapter.py)):**
    - Uniwersalny interfejs łączący dowolny pipeline RAG (LangChain, LlamaIndex, funkcje asynchroniczne) z formatem JudgeKit.
-10. **Chaos Engineering & Testy Awarie ([chaos_eval.py](file:///c:/Users/rakpa/Documents/Ai_Engineer_Portfolio/TheJudge/src/judgekit/chaos_eval.py)):**
+10. **Chaos Engineering & Testy Awarie ([chaos_eval.py](https://github.com/Devilynpl/TheJudge/blob/main/src/judgekit/chaos_eval.py)):**
     - Weryfikacja 4 syntetycznych uszkodzeń RAG: **Regression Detection Rate = 100.0%**.
 
 ---
 
-## 🌐 Ekosystem Trzech Projektów AI (JudgeKit + DocGround + BriefAgent)
+## 🌐 Ekosystem Czterech Projektów AI (JudgeKit + Tollgate + DocGround + BriefAgent)
 
 JudgeKit stanowi **centralną infrastrukturę MLOps/LLMOps** dla połączonego ekosystemu aplikacji AI w portfolio:
 
 ```mermaid
 flowchart TD
+    subgraph Gateway ["🔀 Tollgate (Central LLM Gateway)"]
+        TGRoute[FastAPI /v1/chat Router]
+        TGCache[Semantic Cache: cosine ≥ 0.92]
+        TGGuard[Regex Guardrails + RPM Limiter]
+    end
+
     subgraph Central_LLMOps ["⚖️ JudgeKit (Central Evaluation & CI/CD Gate)"]
         JTarget[target_runner.py & BaseTargetAdapter]
         JRunner[EvalRunner CLI: judgekit evaluate]
@@ -62,6 +68,10 @@ flowchart TD
         BAGate[.github/workflows/agent_eval_gate.yml]
     end
 
+    DGEngine -->|POST /v1/chat| TGRoute
+    BAEngine -->|POST /v1/chat| TGRoute
+    TGRoute --> TGCache
+    TGRoute --> TGGuard
     DGGate -->|CI Trigger| JRunner
     BAGate -->|CI Trigger| JRunner
     JRunner --> JTarget
@@ -73,8 +83,9 @@ flowchart TD
     JRunner --> JDash
 ```
 
-1. **Audyt DocGround RAG ([DocGround](file:///c:/Users/rakpa/Documents/Ai_Engineer_Portfolio/DocGround)):** Weryfikacja Faithfulness $\ge 0.95$, Citation Precision $\ge 0.90$ oraz deterministycznych odmów na 50 pytaniach Golden Set.
-2. **Audyt BriefAgent ([BriefAgent](file:///c:/Users/rakpa/Documents/Ai_Engineer_Portfolio/BriefAgent)):** Ewaluacja 6-punktowej rubryki sukcesu, limitu budżetu (\$0.15 / 12 kroków) oraz $100\%$ skuteczności wykrywania firm-widm (`UNVERIFIABLE_COMPANY`) na 25 referencyjnych firmach.
+1. **Audyt DocGround RAG ([DocGround](https://github.com/Devilynpl/DocGround)):** Weryfikacja Faithfulness ≥ 0.95, Citation Precision ≥ 0.90 oraz deterministycznych odmów na 50 pytaniach Golden Set.
+2. **Audyt BriefAgent ([BriefAgent](https://github.com/Devilynpl/BriefAgent)):** Ewaluacja 6-punktowej rubryki sukcesu, limitu budżetu ($0.15 / 12 kroków) oraz 100% skuteczności wykrywania firm-widm (`UNVERIFIABLE_COMPANY`) na 25 referencyjnych firmach.
+3. **Tollgate Gateway ([Tollgate](https://github.com/Devilynpl/TollGate)):** Centralny punkt wyjścia do Gemini API — JudgeKit może wywoływać LLM via Tollgate zachowując ten sam rate-limit i budżet co pozostałe usługi.
 
 ---
 

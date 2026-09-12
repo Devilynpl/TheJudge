@@ -10,12 +10,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml requirements.txt* ./
+COPY pyproject.toml requirements.txt* README.md ./
+COPY src/ ./src/
+
 RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir streamlit plotly && \
     pip install --no-cache-dir ".[dev]" && \
     pip install --no-cache-dir -e .
 
-COPY src/ ./src/
 COPY artifacts/ ./artifacts/
 COPY TheJudge_logo.jpg ./
 
