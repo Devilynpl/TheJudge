@@ -146,3 +146,19 @@ Ten dokument służy do ciągłego rejestrowania uwag, ryzyk, braków w specyfik
    - *Wniosek:* Zgrupowanie wykrytych regresji w zwijany blok HTML `<details>` pozwala inżynierom natychmiast zobaczyć ogólny stan w tabeli podsumowującej, a w razie potrzeby jednym kliknięciem sprawdzić pełne uzasadnienie LLM (CoT) dla każdego zepsutego przypadku testowego.
 
 ---
+
+## Faza 9: Dashboard trendów i historii (Streamlit + SQLite)
+
+### Obserwacje i zidentyfikowane ryzyka:
+1. **Separacja danych operacyjnych od repozytorium kodu (`.gitignore`):**
+   - *Problem:* Pliki bazy danych SQLite (`data/*.db`) oraz surowe zrzuty ewaluacji nie powinny być commitowane do repozytorium Git, by uniknąć konfliktów binarnych przy równoległych wdrożeniach.
+   - *Rozwiązanie:* Plik `data/eval_history.db` jest ignorowany w `.gitignore`, natomiast w pipeline CI (`update_baseline.yml`) baza danych jest wersjonowana i archiwizowana jako artefakt GitHub Actions (`eval-history-db`).
+
+2. **Indeksowanie i wydajność odpytywania (SQLite Query Optimization):**
+   - *Problem:* Wraz ze wzrostem liczby ewaluacji tabela `test_results` może liczyć dziesiątki tysięcy rekordów, co spowalniałoby interaktywne filtrowanie w aplikacji Streamlit.
+   - *Rozwiązanie:* W module `storage.py` utworzono jawne indeksy `idx_test_results_run_id` oraz `idx_runs_timestamp`, redukując czas zapytania do ułamków milisekund.
+
+3. **Interaktywna analiza jakości i audyt CoT w UI:**
+   - *Wniosek:* Zintegrowanie interaktywnego inspektora błędów z opcją filtrowania (`show_failures_only`) oraz wyszukiwarką pełnotekstową po ID i zapytaniu pozwala zespołowi AI natychmiast wyizolować halucynacje z dowolnego historycznego wdrożenia.
+
+---

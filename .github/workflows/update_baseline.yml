@@ -34,9 +34,21 @@ jobs:
             --golden-set tests/evals/data/golden_set.jsonl \
             --output artifacts/baseline.json
 
+      - name: Ingest Master Run into History Database
+        run: |
+          python -m judgekit.ingest_run --report artifacts/baseline.json --db data/eval_history.db
+
       - name: Publish Official Baseline Artifact
         uses: actions/upload-artifact@v4
         with:
           name: baseline-eval-result
           path: artifacts/baseline.json
           overwrite: true
+
+      - name: Publish Evaluation History Database
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-history-db
+          path: data/eval_history.db
+          overwrite: true
+
