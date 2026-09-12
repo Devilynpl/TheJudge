@@ -58,3 +58,20 @@ Ten dokument służy do ciągłego rejestrowania uwag, ryzyk, braków w specyfik
    - *Wniosek:* Połączenie oceny wierności (Faithfulness) z trafnością (Relevance) w jednym prompcie prowadzi do zafałszowania wyników (np. kwiecista odpowiedź nie na temat otrzymuje wysoką ocenę za brak halucynacji). Zastosowano 3 całkowicie odseparowane prompty (`Faithfulness`, `Relevance`, `Safety`).
 
 ---
+
+## Faza 4: Walidacja sędziego (Human-in-the-loop & Inter-rater Agreement)
+
+### Obserwacje i zidentyfikowane ryzyka:
+1. **Ryzyko polegania na samej dokładności procentowej (Accuracy Paradox):**
+   - *Problem:* W silnie niezbalansowanych zbiorach (np. 90% poprawnych odpowiedzi), sędzia trywialny dający zawsze `1.0` uzyskuje pozorne 90% accuracy, nie wyłapując żadnej halucynacji ani próby ataku.
+   - *Rozwiązanie:* Implementacja współczynnika **Cohen's Kappa ($\kappa$)** w `src/judgekit/alignment.py` odejmuje prawdopodobieństwo losowej zgody ($P_e$). Osiągnięty wynik $\kappa = 0.8565$ na zbiorze kalibracyjnym kwalifikuje sędziego do tzw. *Hard Blocker* w CI/CD.
+
+2. **Krytyczne False Positives vs False Negatives:**
+   - *Problem:* Najgroźniejszym błędem sędziego w produkcji jest **False Positive** (człowiek: 0.0 - halucynacja, sędzia: 1.0 - zaliczenie), ponieważ przepuszcza zmyślone fakty na produkcję. False Negative (człowiek: 1.0, sędzia: 0.0) jest frustrujący dla dewelopera, ale bezpieczny biznesowo.
+   - *Rozwiązanie:* Macierz pomyłek i funkcja `compute_judge_alignment` weryfikują liczbę krytycznych FP i rzucają ostrzeżenie przy jakimkolwiek wykrytym przypadku.
+
+3. **Kodowanie znaków w konsoli Windows (cp1250):**
+   - *Problem:* Drukowanie symboli graficznych unicode/emoji (np. `⚖️`) w skryptach CLI na systemie Windows może powodować `UnicodeEncodeError: 'charmap' codec can't encode characters` w domyślnych powłokach PowerShell z kodowaniem `cp1250`.
+   - *Rozwiązanie:* Zastąpiono symbole ASCII-bezpiecznymi nagłówkami w CLI, gwarantując niezawodne działanie na każdym systemie operacyjnym.
+
+---
