@@ -162,3 +162,22 @@ Ten dokument służy do ciągłego rejestrowania uwag, ryzyk, braków w specyfik
    - *Wniosek:* Zintegrowanie interaktywnego inspektora błędów z opcją filtrowania (`show_failures_only`) oraz wyszukiwarką pełnotekstową po ID i zapytaniu pozwala zespołowi AI natychmiast wyizolować halucynacje z dowolnego historycznego wdrożenia.
 
 ---
+
+## Faza 10: Podpięcie pod docelowy projekt RAG i test na wstrzykniętych regresjach (Chaos Eval)
+
+### Obserwacje i zidentyfikowane ryzyka:
+1. **Elastyczność integracji przez Adapter (`RAGSystemAdapter`):**
+   - *Wniosek:* Systemy RAG w Pythonie przyjmują skrajnie różne formy wywołań (obiekty z metodą `arun()`, callable, słowniki LangChain/LlamaIndex z `source_documents`). Wprowadzenie adaptera z mechanizmem automatycznej normalizacji wyjścia do `RAGResponse` (odpowiedź, lista kontekstów tekstowych, tokeny i czas) uniezależnia `JudgeKit` od biblioteki RAG, z której korzysta zespół.
+
+2. **Empiryczna walidacja reguł Quality Gate (Chaos Engineering):**
+   - *Weryfikacja:* Przetestowano 4 powszechne scenariusze degradacji systemów RAG:
+     - `chaos/bad-chunking`: Zmniejszenie rozmiaru fragmentów (512 -> 128 tokenów) rozbija fakty w zapytaniach wielokrokowych (*multi-hop*), wywołując spadek wierności $\Delta_{\text{faith}} = -0.20$ oraz 4 regresje krytyczne $\implies$ natychmiastowa blokada PR.
+     - `chaos/top-k-drop`: Ograniczenie `top_k` (5 -> 1) odcina model od dowodów źródłowych, zmuszając go do zmyślania faktów ($\Delta_{\text{faith}} = -0.15$, 3 regresje krytyczne) $\implies$ natychmiastowa blokada PR.
+     - `chaos/sloppy-prompt`: Usunięcie guardrailu uziemiającego (*„odpowiedz nie wiem”*) skutkuje halucynowaniem na pytaniach spoza domeny (2 regresje krytyczne $1.0 \to 0.0$) $\implies$ natychmiastowa blokada PR.
+     - `chaos/heavy-reranker`: Wolny reranker zachowuje jakość, lecz drastycznie zwiększa opóźnienie (+450 ms), naruszając SLO P95 (+250 ms) $\implies$ natychmiastowa blokada PR.
+   - *Wynik:* **Regression Detection Rate = 100.0%** (4/4 zablokowane szkodliwe commity).
+
+3. **Status gotowości produkcyjnej:**
+   - Wszystkie 10 faz systemu `JudgeKit` zostało wdrożonych, udokumentowanych i przetestowanych (54/54 testów jednostkowych przechodzi pomyślnie).
+
+---

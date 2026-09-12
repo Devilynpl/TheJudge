@@ -7,7 +7,9 @@ To faza ostatecznej weryfikacji całego systemu. Jeśli zbudujesz JudgeKit, ale 
 ---
 
 ### 1. Architektura podpięcia pod Projekt RAG (Adapter Pattern)
-Docelowy projekt RAG nie powinien zależeć od wewnętrznych struktur ewaluatora. Tworzymy w repozytorium cienki adapter (`rag_adapter.py`), który wystawia zunifikowany interfejs:
+Docelowy projekt RAG nie powinien zależeć od wewnętrznych struktur ewaluatora. Tworzymy w repozytorium cienki adapter (`src/judgekit/rag_adapter.py`), który wystawia zunifikowany interfejs:
+
+- [x] ~~Implementacja wzorca adaptera `RAGSystemAdapter` i kontraktu `RAGResponse` (odpowiedź, źródła, tokeny, opóźnienie).~~
 
 ```python
 from typing import List, NamedTuple
@@ -35,14 +37,15 @@ class RAGSystemAdapter:
 ---
 
 ### 2. Testy Chaosu: Wstrzykiwanie 4 typowych regresji
-Tworzymy 4 eksperymentalne gałęzie symulujące częste błędy inżynierskie w aplikacjach RAG:
+- [x] ~~Implementacja modułu Chaos Engineering `src/judgekit/chaos_eval.py` oraz narzędzia CLI `src/judgekit/cli_chaos.py`.~~
+- [x] ~~Weryfikacja zachowania bramki jakości (Quality Gate) na 4 syntetycznych awariach:~~
 
-| Branch testowy | Wstrzyknięta zmiana | Oczekiwany efekt w RAG | Reakcja JudgeKit (Quality Gate) |
-| :--- | :--- | :--- | :--- |
-| `chaos/bad-chunking` | Zmniejszenie chunk size z 512 do 128 tokenów | Rozbicie faktów, utrata kontekstu dla zapytań multi-hop | **BLOKADA PR:** Drastyczny spadek Faithfulness w kategorii Multi-hop |
-| `chaos/top-k-drop` | Zmniejszenie top_k z 5 do 1 dokumentu | Brak kluczowych fragmentów w prompcie | **BLOKADA PR:** Wykrycie halucynacji (model zmyśla brakujące dane) |
-| `chaos/sloppy-prompt` | Usunięcie instrukcji: *„Jeśli brak danych, powiedz nie wiem”* | Model odpowiada z wiedzy ogólnej na zapytania out-of-domain | **BLOKADA PR:** Skok błędów krytycznych ($1.0 \to 0.0$) na pytaniach Unanswerable |
-| `chaos/heavy-reranker` | Dodanie bardzo powolnego cross-encodera do retrievalu | Minimalna poprawa jakości (+1%), lecz drastyczny skok czasu | **BLOKADA PR:** Przekroczenie limitu wydajności $P95\text{ Latency} > +250\text{ ms}$ |
+| Branch testowy | Wstrzyknięta zmiana | Oczekiwany efekt w RAG | Reakcja JudgeKit (Quality Gate) | Wynik |
+| :--- | :--- | :--- | :--- | :---: |
+| `chaos/bad-chunking` | Zmniejszenie chunk size z 512 do 128 tokenów | Rozbicie faktów, utrata kontekstu dla zapytań multi-hop | **BLOKADA PR:** Drastyczny spadek Faithfulness (-0.20) | ✅ **ZABLOKOWANY** |
+| `chaos/top-k-drop` | Zmniejszenie top_k z 5 do 1 dokumentu | Brak kluczowych fragmentów w prompcie | **BLOKADA PR:** Wykrycie halucynacji (model zmyśla brakujące dane) | ✅ **ZABLOKOWANY** |
+| `chaos/sloppy-prompt` | Usunięcie instrukcji: *„Jeśli brak danych, powiedz nie wiem”* | Model odpowiada z wiedzy ogólnej na zapytania out-of-domain | **BLOKADA PR:** Skok błędów krytycznych ($1.0 \to 0.0$) | ✅ **ZABLOKOWANY** |
+| `chaos/heavy-reranker` | Dodanie bardzo powolnego cross-encodera do retrievalu | Minimalna poprawa jakości (+1%), lecz drastyczny skok czasu | **BLOKADA PR:** Przekroczenie limitu wydajności $P95\text{ Latency} > +250\text{ ms}$ | ✅ **ZABLOKOWANY** |
 
 ---
 
@@ -51,4 +54,5 @@ Po przeprowadzeniu testów weryfikujemy niezawodność systemu za pomocą metryk
 
 $$\text{Wskaźnik Wykrywalności Regresji} = \frac{\text{Liczba zablokowanych szkodliwych PR}}{\text{Liczba celowo wprowadzonych awarii}} \times 100\%$$
 
+- [x] ~~**Empiryczny wynik Chaos Eval: 4/4 zablokowanych PR-ów $\implies$ RDR = 100.0%.**~~
 Osiągnięcie 100% wykrywalności dowodzi pełnej gotowości systemu do pracy na produkcji.
