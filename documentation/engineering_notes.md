@@ -75,3 +75,21 @@ Ten dokument służy do ciągłego rejestrowania uwag, ryzyk, braków w specyfik
    - *Rozwiązanie:* Zastąpiono symbole ASCII-bezpiecznymi nagłówkami w CLI, gwarantując niezawodne działanie na każdym systemie operacyjnym.
 
 ---
+
+## Faza 5: Silnik uruchomieniowy i pomiar wydajności (Runner + Latency + Tokeny)
+
+### Obserwacje i zidentyfikowane ryzyka:
+1. **Ochrona przed błędem 429 Rate Limit (asyncio.Semaphore):**
+   - *Problem:* Przy braku ograniczeń współbieżności zapytania do modeli zewnętrznych natychmiast przekraczają limity RPM/TPM w CI/CD, powodując błędy sieciowe `HTTP 429`.
+   - *Rozwiązanie:* `EvalRunner` wykorzystuje `asyncio.Semaphore(max_concurrency=10)`, co pozwala na zrównoleglenie ewaluacji przy zachowaniu bezpiecznego pułapu obciążenia API dostawcy.
+
+2. **Średnia arytmetyczna vs percentyle (P50 i P95 Latency):**
+   - *Wniosek:* Średnia arytmetyczna ukrywa pojedyncze powolne zapytania (tzw. tail latency). Zastosowanie percentyli `P50` (mediana) oraz `P95` (95. percentyl) w `compute_run_summary` pozwala natychmiast wykryć degradację wydajności dla zapytań złożonych (multi-hop / duże konteksty).
+
+3. **Izolacja interfejsu RAG (RAG Protocol Flexibility):**
+   - *Wniosek:* Różne frameworki RAG (LangChain, LlamaIndex, custom pipelines) zwracają obiekty o różnych polach (`answer`, `response`, `context` vs `contexts`, słowniki lub obiekty domenowe). W `EvalRunner.evaluate_single` zaimplementowano uniwersalną normalizację, co zapobiega awariom integracyjnym.
+
+4. **Trwałość artefaktów ewaluacyjnych:**
+   - *Wniosek:* Wygenerowany raport JSON zawiera zarówno podsumowanie statystyczne z commit SHA i gałęzią Git, jak i pełen wykaz pojedynczych przypadków testowych (`cases`), co stanowi kompletne wejście dla komparatora A/B w Fazie 6.
+
+---
