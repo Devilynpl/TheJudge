@@ -131,60 +131,74 @@ class EvalRunner:
 
         async with self.semaphore:
             t0 = time.perf_counter()
+            try:
+                # 1. Query evaluated RAG system
+                raw_rag_response = await self.rag.aquery(tc.query)
+                latency_ms = (time.perf_counter() - t0) * 1000.0
 
-            # 1. Query evaluated RAG system
-            raw_rag_response = await self.rag.aquery(tc.query)
-            latency_ms = (time.perf_counter() - t0) * 1000.0
+                # Normalize RAG response
+                if hasattr(raw_rag_response, "answer"):
+                    answer = raw_rag_response.answer
+                    contexts = getattr(raw_rag_response, "contexts", []) or getattr(raw_rag_response, "context", [])
+                    inp_tokens = getattr(raw_rag_response, "input_tokens", 0)
+                    out_tokens = getattr(raw_rag_response, "output_tokens", 0)
+                elif isinstance(raw_rag_response, dict):
+                    answer = raw_rag_response.get("answer", "")
+                    contexts = raw_rag_response.get("contexts", [])
+                    inp_tokens = raw_rag_response.get("input_tokens", 0)
+                    out_tokens = raw_rag_response.get("output_tokens", 0)
+                else:
+                    answer = str(raw_rag_response)
+                    contexts = []
+                    inp_tokens = 0
+                    out_tokens = 0
 
-            # Normalize RAG response
-            if hasattr(raw_rag_response, "answer"):
-                answer = raw_rag_response.answer
-                contexts = getattr(raw_rag_response, "contexts", []) or getattr(raw_rag_response, "context", [])
-                inp_tokens = getattr(raw_rag_response, "input_tokens", 0)
-                out_tokens = getattr(raw_rag_response, "output_tokens", 0)
-            elif isinstance(raw_rag_response, dict):
-                answer = raw_rag_response.get("answer", "")
-                contexts = raw_rag_response.get("contexts", [])
-                inp_tokens = raw_rag_response.get("input_tokens", 0)
-                out_tokens = raw_rag_response.get("output_tokens", 0)
-            else:
-                answer = str(raw_rag_response)
-                contexts = []
-                inp_tokens = 0
-                out_tokens = 0
+                # Ensure contexts is a list
+                if isinstance(contexts, str):
+                    contexts = [contexts]
 
-            # Ensure contexts is a list
-            if isinstance(contexts, str):
-                contexts = [contexts]
+                # 2. Parallel Judge evaluation (Faithfulness + Relevance)
+                faith_task = self.judge.a_eval_faithfulness(
+                    context=contexts,
+                    answer=answer,
+                )
+                rel_task = self.judge.a_eval_relevance(
+                    query=tc.query,
+                    answer=answer,
+                )
 
-            # 2. Parallel Judge evaluation (Faithfulness + Relevance)
-            faith_task = self.judge.a_eval_faithfulness(
-                context=contexts,
-                answer=answer,
-            )
-            rel_task = self.judge.a_eval_relevance(
-                query=tc.query,
-                answer=answer,
-            )
+                faith_verdict, rel_verdict = await asyncio.gather(faith_task, rel_task)
 
-            faith_verdict, rel_verdict = await asyncio.gather(faith_task, rel_task)
+                # 3. Calculate operational cost
+                cost = (
+                    (inp_tokens * self.cost_per_1m_input) + (out_tokens * self.cost_per_1m_output)
+                ) / 1_000_000.0
 
-            # 3. Calculate operational cost
-            cost = (
-                (inp_tokens * self.cost_per_1m_input) + (out_tokens * self.cost_per_1m_output)
-            ) / 1_000_000.0
+                return PipelineMetrics(
+                    test_id=tc.id,
+                    latency_ms=round(latency_ms, 2),
+                    input_tokens=inp_tokens,
+                    output_tokens=out_tokens,
+                    cost_usd=round(cost, 6),
+                    faithfulness_score=faith_verdict.score,
+                    relevance_score=rel_verdict.score,
+                    faithfulness_reasoning=faith_verdict.reasoning,
+                    relevance_reasoning=rel_verdict.reasoning,
+                )
+            except Exception as err:
+                latency_ms = (time.perf_counter() - t0) * 1000.0
+                return PipelineMetrics(
+                    test_id=tc.id,
+                    latency_ms=round(latency_ms, 2),
+                    input_tokens=0,
+                    output_tokens=0,
+                    cost_usd=0.0,
+                    faithfulness_score=0.0,
+                    relevance_score=0.0,
+                    faithfulness_reasoning=f"Execution error: {str(err)}",
+                    relevance_reasoning=f"Execution error: {str(err)}",
+                )
 
-            return PipelineMetrics(
-                test_id=tc.id,
-                latency_ms=round(latency_ms, 2),
-                input_tokens=inp_tokens,
-                output_tokens=out_tokens,
-                cost_usd=round(cost, 6),
-                faithfulness_score=faith_verdict.score,
-                relevance_score=rel_verdict.score,
-                faithfulness_reasoning=faith_verdict.reasoning,
-                relevance_reasoning=rel_verdict.reasoning,
-            )
 
     async def run_suite(
         self,

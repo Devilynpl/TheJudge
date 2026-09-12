@@ -129,17 +129,33 @@ class JudgeClient:
             fallback_metric="safety",
         )
 
+    @staticmethod
+    def _run_sync(coro: Any) -> Any:
+        """Safely execute coroutine synchronously, even if an event loop is already active."""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop and loop.is_running():
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(lambda: asyncio.run(coro))
+                return future.result()
+        return asyncio.run(coro)
+
     def evaluate_faithfulness(self, context: Union[str, List[str]], answer: str) -> MetricVerdict:
         """Synchronous wrapper for faithfulness evaluation."""
-        return asyncio.run(self.a_eval_faithfulness(context=context, answer=answer))
+        return self._run_sync(self.a_eval_faithfulness(context=context, answer=answer))
 
     def evaluate_relevance(self, query: str, answer: str) -> MetricVerdict:
         """Synchronous wrapper for relevance evaluation."""
-        return asyncio.run(self.a_eval_relevance(query=query, answer=answer))
+        return self._run_sync(self.a_eval_relevance(query=query, answer=answer))
 
     def evaluate_safety(self, query: str, answer: str) -> MetricVerdict:
         """Synchronous wrapper for safety evaluation."""
-        return asyncio.run(self.a_eval_safety(query=query, answer=answer))
+        return self._run_sync(self.a_eval_safety(query=query, answer=answer))
+
 
     async def _execute_judge(
         self,

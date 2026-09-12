@@ -194,27 +194,27 @@ def post_or_update_pr_comment(
         "User-Agent": "JudgeKit-PR-Commenter",
     }
 
-    client = httpx.Client(base_url=api_url, headers=headers, timeout=20.0)
+    with httpx.Client(base_url=api_url, headers=headers, timeout=20.0) as client:
+        # 1. Fetch existing comments on PR
+        url = f"/repos/{repo}/issues/{pr_number}/comments"
+        resp = client.get(url)
+        resp.raise_for_status()
+        comments = resp.json()
 
-    # 1. Fetch existing comments on PR
-    url = f"/repos/{repo}/issues/{pr_number}/comments"
-    resp = client.get(url)
-    resp.raise_for_status()
-    comments = resp.json()
+        existing_comment_id = None
+        for comment in comments:
+            if COMMENT_HEADER_TAG in comment.get("body", ""):
+                existing_comment_id = comment["id"]
+                break
 
-    existing_comment_id = None
-    for comment in comments:
-        if COMMENT_HEADER_TAG in comment.get("body", ""):
-            existing_comment_id = comment["id"]
-            break
+        # 2. Update or Create
+        if existing_comment_id:
+            update_url = f"/repos/{repo}/issues/comments/{existing_comment_id}"
+            patch_resp = client.patch(update_url, json={"body": body})
+            patch_resp.raise_for_status()
+            return patch_resp.json()
+        else:
+            post_resp = client.post(url, json={"body": body})
+            post_resp.raise_for_status()
+            return post_resp.json()
 
-    # 2. Update or Create
-    if existing_comment_id:
-        update_url = f"/repos/{repo}/issues/comments/{existing_comment_id}"
-        patch_resp = client.patch(update_url, json={"body": body})
-        patch_resp.raise_for_status()
-        return patch_resp.json()
-    else:
-        post_resp = client.post(url, json={"body": body})
-        post_resp.raise_for_status()
-        return post_resp.json()

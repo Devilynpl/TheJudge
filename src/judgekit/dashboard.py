@@ -23,26 +23,25 @@ db_path = DEFAULT_DB_PATH
 if not db_path.exists():
     init_db(db_path)
 
-conn = sqlite3.connect(db_path)
-
-# 1. Pobranie danych zagregowanych
-try:
-    runs_df = pd.read_sql_query(
-        """
-        SELECT run_id, timestamp, commit_sha, branch, 
-               mean_faithfulness, mean_relevance, p95_latency_ms, total_cost_usd, golden_set_version
-        FROM runs 
-        ORDER BY timestamp ASC
-        """,
-        conn,
-    )
-except Exception as e:
-    st.error(f"Błąd odczytu bazy danych: {e}")
-    st.stop()
+with sqlite3.connect(db_path) as conn:
+    try:
+        runs_df = pd.read_sql_query(
+            """
+            SELECT run_id, timestamp, commit_sha, branch, 
+                   mean_faithfulness, mean_relevance, p95_latency_ms, total_cost_usd, golden_set_version
+            FROM runs 
+            ORDER BY timestamp ASC
+            """,
+            conn,
+        )
+    except Exception as e:
+        st.error(f"Błąd odczytu bazy danych: {e}")
+        st.stop()
 
 if runs_df.empty:
     st.info("ℹ️ Brak zarejestrowanych przebiegów w bazie danych. Uruchom ewaluację i zasil bazę skryptem `judgekit.ingest_run`.")
     st.stop()
+
 
 # Header metrics (Latest Run)
 latest_run = runs_df.iloc[-1]
@@ -93,17 +92,19 @@ selected_run = st.selectbox(
     format_func=lambda x: f"Run ID: {x[:12]} | Commit: {runs_df.loc[runs_df['run_id']==x, 'commit_sha'].values[0][:7]} | Data: {runs_df.loc[runs_df['run_id']==x, 'timestamp'].values[0]}",
 )
 
-results_df = pd.read_sql_query(
-    """
-    SELECT test_id, query, generated_answer, faithfulness_score, faithfulness_reasoning,
-           relevance_score, relevance_reasoning, latency_ms 
-    FROM test_results 
-    WHERE run_id = ?
-    ORDER BY faithfulness_score ASC, test_id ASC
-    """,
-    conn,
-    params=(selected_run,),
-)
+with sqlite3.connect(db_path) as conn:
+    results_df = pd.read_sql_query(
+        """
+        SELECT test_id, query, generated_answer, faithfulness_score, faithfulness_reasoning,
+               relevance_score, relevance_reasoning, latency_ms 
+        FROM test_results 
+        WHERE run_id = ?
+        ORDER BY faithfulness_score ASC, test_id ASC
+        """,
+        conn,
+        params=(selected_run,),
+    )
+
 
 col_filter1, col_filter2 = st.columns([1, 3])
 with col_filter1:
