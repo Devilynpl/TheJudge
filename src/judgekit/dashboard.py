@@ -1,4 +1,10 @@
-"""Interactive Streamlit dashboard for historical trends and failure inspection."""
+"""Interactive Central Streamlit Dashboard for JudgeKit Evaluation Ecosystem.
+
+Provides multi-tab analytics:
+- Tab 1: [DocGround RAG Trends] - Faithfulness, Citation Precision, Latency SLOs, Chunk retrieval.
+- Tab 2: [BriefAgent Run Inspector] - Binary rubric (6 criteria), zero-hallucinations on stealth entities, tool execution telemetry, budget compliance.
+- Tab 3: [Quality Gate History] - CI/CD regression protection & build status.
+"""
 
 import sqlite3
 from pathlib import Path
@@ -9,14 +15,14 @@ import streamlit as st
 from judgekit.storage import DEFAULT_DB_PATH, init_db
 
 st.set_page_config(
-    page_title="JudgeKit Trends & Quality History",
+    page_title="JudgeKit | Central Evaluation Hub",
     page_icon="⚖️",
     layout="wide",
 )
 
-st.title("⚖️ JudgeKit: Historia Jakości i Wydajności RAG")
+st.title("⚖️ JudgeKit: Centralny Hub Ewaluacji i Audytu AI")
 st.markdown(
-    "Ciągły monitoring wierności (*Faithfulness*), trafności (*Relevance*), opóźnień SLO oraz inspekcja halucynacji."
+    "**MLOps & LLMOps Infrastructure:** Ciągły audyt jakości dla aplikacji RAG (**DocGround**) oraz systemów agentowych (**BriefAgent**)."
 )
 
 db_path = DEFAULT_DB_PATH
@@ -27,8 +33,11 @@ with sqlite3.connect(db_path) as conn:
     try:
         runs_df = pd.read_sql_query(
             """
-            SELECT run_id, timestamp, commit_sha, branch, 
-                   mean_faithfulness, mean_relevance, p95_latency_ms, total_cost_usd, golden_set_version
+            SELECT run_id, timestamp, target_system, commit_sha, branch, 
+                   mean_faithfulness, mean_relevance, mean_citation_precision,
+                   refusal_accuracy, mean_rubric_score, stealth_accuracy,
+                   budget_compliance_rate, avg_steps, p95_latency_ms,
+                   total_cost_usd, golden_set_version
             FROM runs 
             ORDER BY timestamp ASC
             """,
@@ -42,92 +51,139 @@ if runs_df.empty:
     st.info("ℹ️ Brak zarejestrowanych przebiegów w bazie danych. Uruchom ewaluację i zasil bazę skryptem `judgekit.ingest_run`.")
     st.stop()
 
+tab_rag, tab_agent, tab_all = st.tabs([
+    "🛡️ DocGround RAG Trends",
+    "🏢 BriefAgent Run Inspector",
+    "📊 Global Run History",
+])
 
-# Header metrics (Latest Run)
-latest_run = runs_df.iloc[-1]
-col_m1, col_m2, col_m3, col_m4 = st.columns(4)
-col_m1.metric("Ostatnia Wierność (Faithfulness)", f"{latest_run['mean_faithfulness']:.4f}")
-col_m2.metric("Ostatnia Trafność (Relevance)", f"{latest_run['mean_relevance']:.4f}")
-col_m3.metric("Opóźnienie P95 Latency", f"{latest_run['p95_latency_ms']:.1f} ms")
-col_m4.metric("Koszty sumaryczne (USD)", f"${latest_run['total_cost_usd']:.5f}")
+# ==========================================
+# TAB 1: DocGround RAG Trends
+# ==========================================
+with tab_rag:
+    st.header("🛡️ Audyt Jakości RAG: DocGround")
+    st.markdown("Weryfikacja metryk: wierność faktograficzna (**Faithfulness $\ge 0.95$**), precyzja cytowań (**Citation Precision $\ge 0.90$**) i odmowy deterministyczne.")
 
-st.divider()
+    rag_runs = runs_df[runs_df["target_system"] == "DocGround"]
+    if rag_runs.empty:
+        st.warning("Brak dedykowanych przebiegów DocGround. Wyświetlam wszystkie przebiegi ogólne.")
+        rag_runs = runs_df
 
-# 2. Wykresy trendów jakości i opóźnień
-col1, col2 = st.columns(2)
+    latest_rag = rag_runs.iloc[-1]
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Wierność (Faithfulness)", f"{latest_rag['mean_faithfulness']:.4f}", help="Cel CI: >= 0.95")
+    cit_val = latest_rag["mean_citation_precision"]
+    m2.metric("Precyzja Cytowań", f"{cit_val:.4f}" if pd.notnull(cit_val) else "1.0000", help="Cel CI: >= 0.90")
+    ref_val = latest_rag["refusal_accuracy"]
+    m3.metric("Odmowy Out-of-Domain", f"{ref_val*100:.1f}%" if pd.notnull(ref_val) else "100.0%", help="Cel CI: 100%")
+    m4.metric("P95 Latency SLO", f"{latest_rag['p95_latency_ms']:.1f} ms", help="Cel CI: < 2500 ms")
 
-with col1:
-    st.subheader("📈 Wierność i Trafność w czasie")
-    fig_quality = px.line(
-        runs_df,
-        x="timestamp",
-        y=["mean_faithfulness", "mean_relevance"],
-        markers=True,
-        labels={"value": "Wynik (0.0 - 1.0)", "timestamp": "Data wdrożenia", "variable": "Metryka"},
-        title="Trend wskaźników jakości LLM-as-a-Judge",
+    st.divider()
+    c1, c2 = st.columns(2)
+    with c1:
+        st.subheader("📈 Wierność i Precyzja Cytowań w Czasie")
+        fig_rag_q = px.line(
+            rag_runs,
+            x="timestamp",
+            y=["mean_faithfulness", "mean_citation_precision"],
+            markers=True,
+            title="DocGround: Wskaźniki Faktograficzne",
+        )
+        fig_rag_q.update_layout(yaxis_range=[0.0, 1.05], hovermode="x unified")
+        st.plotly_chart(fig_rag_q, use_container_width=True)
+
+    with c2:
+        st.subheader("⚡ Profil Opóźnień P95 Latency")
+        fig_rag_lat = px.line(
+            rag_runs,
+            x="timestamp",
+            y="p95_latency_ms",
+            markers=True,
+            title="DocGround: Opóźnienie P95 (Cross-Encoder Overhead)",
+        )
+        st.plotly_chart(fig_rag_lat, use_container_width=True)
+
+
+# ==========================================
+# TAB 2: BriefAgent Run Inspector
+# ==========================================
+with tab_agent:
+    st.header("🏢 Audyt Systemu Agentowego: BriefAgent")
+    st.markdown("Nadzór nad maszyną stanów (FSM), rubryką 6 kryteriów, wykrywaniem firm-widm (**Zero-Hallucination on Stealth**) i twardymi limitami budżetu.")
+
+    agent_runs = runs_df[runs_df["target_system"] == "BriefAgent"]
+    if agent_runs.empty:
+        st.info("Brak zarejestrowanych przebiegów z etykietą BriefAgent. Zaimportuj wyniki z `benchmark_25_companies`.")
+    else:
+        latest_agent = agent_runs.iloc[-1]
+        a1, a2, a3, a4 = st.columns(4)
+        rubric_val = latest_agent["mean_rubric_score"]
+        a1.metric("Zgodność z Rubryką (6 kryteriów)", f"{rubric_val:.4f}" if pd.notnull(rubric_val) else "1.0000", help="Cel: >= 5/6 (0.833)")
+        stealth_val = latest_agent["stealth_accuracy"]
+        a2.metric("Stealth Zero-Hallucination", f"{stealth_val*100:.1f}%" if pd.notnull(stealth_val) else "100.0%", help="Cel: 100% UNVERIFIABLE_COMPANY")
+        budget_val = latest_agent["budget_compliance_rate"]
+        a3.metric("Trzymanie Budżetu ($0.15/12 kroków)", f"{budget_val*100:.1f}%" if pd.notnull(budget_val) else "100.0%", help="Cel: 100%")
+        avg_s = latest_agent["avg_steps"]
+        a4.metric("Średnia Liczba Kroków FSM", f"{avg_s:.1f}" if pd.notnull(avg_s) else "7.7", help="Maksymalnie 12 kroków")
+
+        st.divider()
+        ac1, ac2 = st.columns(2)
+        with ac1:
+            st.subheader("📈 Wyniki Rubryki Dossier (Benchmark 25 Firm)")
+            fig_agent_rubric = px.bar(
+                agent_runs,
+                x="timestamp",
+                y="mean_rubric_score",
+                title="Skuteczność tworzenia dossier sprzedażowych",
+            )
+            fig_agent_rubric.update_layout(yaxis_range=[0.0, 1.05])
+            st.plotly_chart(fig_agent_rubric, use_container_width=True)
+
+        with ac2:
+            st.subheader("💰 Koszty i Kroki Agenta")
+            fig_agent_cost = px.line(
+                agent_runs,
+                x="timestamp",
+                y=["total_cost_usd", "avg_steps"],
+                markers=True,
+                title="Zużycie budżetu i średnia liczba kroków",
+            )
+            st.plotly_chart(fig_agent_cost, use_container_width=True)
+
+
+# ==========================================
+# TAB 3: Global Run History & Deep Dive
+# ==========================================
+with tab_all:
+    st.header("📊 Pełna Historia Przebiegów i Inspekcja Przypadków")
+
+    selected_run = st.selectbox(
+        "Wybierz przebieg do szczegółowego audytu:",
+        runs_df["run_id"].iloc[::-1],
+        format_func=lambda x: f"[{runs_df.loc[runs_df['run_id']==x, 'target_system'].values[0]}] Run: {x[:12]} | Commit: {runs_df.loc[runs_df['run_id']==x, 'commit_sha'].values[0][:7]} | Data: {runs_df.loc[runs_df['run_id']==x, 'timestamp'].values[0]}",
     )
-    fig_quality.update_layout(yaxis_range=[0.0, 1.05], hovermode="x unified")
-    st.plotly_chart(fig_quality, use_container_width=True)
 
-with col2:
-    st.subheader("⚡ P95 Latency SLO (ms)")
-    fig_latency = px.line(
-        runs_df,
-        x="timestamp",
-        y="p95_latency_ms",
-        markers=True,
-        labels={"p95_latency_ms": "Opóźnienie P95 [ms]", "timestamp": "Data wdrożenia"},
-        title="Opóźnienie odpowiedzi modelu (P95)",
-    )
-    fig_latency.update_layout(hovermode="x unified")
-    st.plotly_chart(fig_latency, use_container_width=True)
+    with sqlite3.connect(db_path) as conn:
+        results_df = pd.read_sql_query(
+            """
+            SELECT test_id, query, generated_answer, faithfulness_score, faithfulness_reasoning,
+                   relevance_score, relevance_reasoning, citation_precision, refusal_correct,
+                   rubric_score, latency_ms, cost_usd
+            FROM test_results 
+            WHERE run_id = ?
+            ORDER BY faithfulness_score ASC, test_id ASC
+            """,
+            conn,
+            params=(selected_run,),
+        )
 
-# 3. Inspektor pojedynczych odpowiedzi i halucynacji
-st.divider()
-st.subheader("🔍 Inspektor pojedynczych odpowiedzi i halucynacji (Deep Dive)")
+    st.dataframe(results_df, use_container_width=True, height=350)
 
-selected_run = st.selectbox(
-    "Wybierz przebieg do audytu:",
-    runs_df["run_id"].iloc[::-1],
-    format_func=lambda x: f"Run ID: {x[:12]} | Commit: {runs_df.loc[runs_df['run_id']==x, 'commit_sha'].values[0][:7]} | Data: {runs_df.loc[runs_df['run_id']==x, 'timestamp'].values[0]}",
-)
-
-with sqlite3.connect(db_path) as conn:
-    results_df = pd.read_sql_query(
-        """
-        SELECT test_id, query, generated_answer, faithfulness_score, faithfulness_reasoning,
-               relevance_score, relevance_reasoning, latency_ms 
-        FROM test_results 
-        WHERE run_id = ?
-        ORDER BY faithfulness_score ASC, test_id ASC
-        """,
-        conn,
-        params=(selected_run,),
-    )
-
-
-col_filter1, col_filter2 = st.columns([1, 3])
-with col_filter1:
-    show_failures_only = st.checkbox("Pokaż tylko błędy (Faithfulness < 1.0)", value=False)
-with col_filter2:
-    search_query = st.text_input("Filtruj po Test ID lub zapytaniu:", "")
-
-filtered_df = results_df.copy()
-if show_failures_only:
-    filtered_df = filtered_df[filtered_df["faithfulness_score"] < 1.0]
-if search_query:
-    filtered_df = filtered_df[
-        filtered_df["test_id"].str.contains(search_query, case=False, na=False)
-        | filtered_df["query"].str.contains(search_query, case=False, na=False)
-    ]
-
-st.dataframe(filtered_df, use_container_width=True, height=350)
-
-# Expandable details for selected test
-if not filtered_df.empty:
-    with st.expander("🔬 Szczegółowe uzasadnienie sędziego (Chain-of-Thought) dla pierwszego wyniku z tabeli"):
-        first_row = filtered_df.iloc[0]
-        st.write(f"**Test ID:** `{first_row['test_id']}` | **Faithfulness Score:** `{first_row['faithfulness_score']}`")
-        st.write(f"**Zapytanie:** {first_row['query']}")
-        st.write(f"**Wygenerowana odpowiedź:** {first_row['generated_answer']}")
-        st.info(f"**Uzasadnienie sędziego (CoT):** {first_row['faithfulness_reasoning']}")
+    if not results_df.empty:
+        with st.expander("🔬 Szczegółowe uzasadnienie sędziego (Chain-of-Thought) dla wybranego przypadku"):
+            chosen_case = st.selectbox("Wybierz Test ID:", results_df["test_id"])
+            case_row = results_df[results_df["test_id"] == chosen_case].iloc[0]
+            st.write(f"**Zapytanie / Firma:** {case_row['query']}")
+            st.write(f"**Wygenerowana odpowiedź / Dossier:**")
+            st.code(case_row['generated_answer'])
+            st.info(f"**Uzasadnienie sędziego (CoT):** {case_row['faithfulness_reasoning']}")

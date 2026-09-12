@@ -50,6 +50,17 @@ def load_golden_set(file_path: Union[str, Path]) -> List[TestCase]:
                 continue
 
             try:
+                # Support DocGround format (question, is_answerable, expected_answer_keywords)
+                if "query" not in data and "question" in data:
+                    data["query"] = data["question"]
+                if "expected_behavior" not in data:
+                    is_ans = data.get("is_answerable", True)
+                    if not is_ans:
+                        data["expected_behavior"] = "Refuse to answer due to missing context."
+                    else:
+                        keywords = ", ".join(data.get("expected_answer_keywords", []))
+                        data["expected_behavior"] = f"Answer factually using document context with keywords: {keywords}"
+
                 test_case = TestCase.model_validate(data)
                 if test_case.id in seen_ids:
                     errors.append(f"Line {line_number}: Duplicate test case ID '{test_case.id}'")

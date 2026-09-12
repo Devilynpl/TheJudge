@@ -159,6 +159,34 @@ class PipelineMetrics(BaseModel):
         le=1.0,
         description="Evaluated answer relevance score (0.0 to 1.0).",
     )
+    citation_precision: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Citation precision score (fraction of citations referencing verified sources).",
+    )
+    refusal_correct: Optional[bool] = Field(
+        default=None,
+        description="Whether deterministic refusal ('Nie wiem') was correctly applied for out-of-domain/unanswerable query.",
+    )
+    rubric_score: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Binary rubric agreement score (e.g. for agent dossier evaluation).",
+    )
+    stealth_verified: Optional[bool] = Field(
+        default=None,
+        description="For stealth/adversarial targets, whether UNVERIFIABLE_COMPANY was correctly recognized.",
+    )
+    budget_compliant: Optional[bool] = Field(
+        default=None,
+        description="Whether execution stayed strictly within steps and cost budget limits.",
+    )
+    step_count: Optional[int] = Field(
+        default=None,
+        description="Execution steps / transitions taken.",
+    )
     faithfulness_reasoning: Optional[str] = Field(
         default=None,
         description="Optional detailed faithfulness reasoning.",
@@ -167,3 +195,20 @@ class PipelineMetrics(BaseModel):
         default=None,
         description="Optional detailed answer relevance reasoning.",
     )
+
+
+class GateConfig(BaseModel):
+    """Configuration contract for CI/CD Quality Gate."""
+
+    min_faithfulness: float = Field(default=0.95, description="Minimum acceptable mean faithfulness.")
+    min_citation_precision: float = Field(default=0.90, description="Minimum acceptable citation precision.")
+    require_deterministic_refusal: bool = Field(default=True, description="Enforce 100% correct refusal on unanswerables.")
+    max_faithfulness_drop: float = Field(default=0.02, description="Max allowed regression vs baseline.")
+    max_critical_regressions: int = Field(default=0, description="Max allowed drops >= 0.5.")
+    max_p95_latency_ms: float = Field(default=2500.0, description="Max absolute P95 latency allowed in ms.")
+    max_p95_latency_increase_ms: float = Field(default=250.0, description="Max allowed increase in P95 latency vs baseline.")
+    min_rubric_score: float = Field(default=0.83, description="Minimum acceptable binary rubric agreement (e.g. 5/6 = 0.833).")
+    require_stealth_zero_hallucination: bool = Field(default=True, description="Require 100% UNVERIFIABLE_COMPANY for phantom entities.")
+    max_agent_steps: int = Field(default=12, description="Max execution steps permitted for agent.")
+    max_agent_cost_usd: float = Field(default=0.15, description="Max budget in USD permitted for agent.")
+

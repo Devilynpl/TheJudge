@@ -58,3 +58,4 @@ data/*.db
 data/*.sqlite3
 !artifacts/.gitkeep
 !tests/evals/data/*.jsonl
+.agents/

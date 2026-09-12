@@ -37,6 +37,47 @@
 
 ---
 
+## 🌐 Ekosystem Trzech Projektów AI (JudgeKit + DocGround + BriefAgent)
+
+JudgeKit stanowi **centralną infrastrukturę MLOps/LLMOps** dla połączonego ekosystemu aplikacji AI w portfolio:
+
+```mermaid
+flowchart TD
+    subgraph Central_LLMOps ["⚖️ JudgeKit (Central Evaluation & CI/CD Gate)"]
+        JTarget[target_runner.py & BaseTargetAdapter]
+        JRunner[EvalRunner CLI: judgekit evaluate]
+        JGate[Quality Gate Engine: Hard Pass/Fail Enforcer]
+        JDash[Streamlit Dashboard: Multi-Tab Analytics]
+    end
+
+    subgraph RAG_App ["🛡️ DocGround (Production RAG)"]
+        DGEngine[Hybrid Retrieval + Cross-Encoder + Citation Validator]
+        DGAdapter[tests/evals/judge_adapter.py: DocGroundTargetAdapter]
+        DGGate[.github/workflows/rag_eval_gate.yml]
+    end
+
+    subgraph Agent_App ["🏢 BriefAgent (Autonomous Research Agent)"]
+        BAEngine[Deterministic FSM + Resilient Tools + Hard Budget]
+        BAAdapter[tests/evals/agent_eval_adapter.py: BriefAgentTargetAdapter]
+        BAGate[.github/workflows/agent_eval_gate.yml]
+    end
+
+    DGGate -->|CI Trigger| JRunner
+    BAGate -->|CI Trigger| JRunner
+    JRunner --> JTarget
+    JTarget -->|Protocol Evaluation| DGAdapter
+    JTarget -->|Protocol Evaluation| BAAdapter
+    DGAdapter --> DGEngine
+    BAAdapter --> BAEngine
+    JRunner --> JGate
+    JRunner --> JDash
+```
+
+1. **Audyt DocGround RAG ([DocGround](file:///c:/Users/rakpa/Documents/Ai_Engineer_Portfolio/DocGround)):** Weryfikacja Faithfulness $\ge 0.95$, Citation Precision $\ge 0.90$ oraz deterministycznych odmów na 50 pytaniach Golden Set.
+2. **Audyt BriefAgent ([BriefAgent](file:///c:/Users/rakpa/Documents/Ai_Engineer_Portfolio/BriefAgent)):** Ewaluacja 6-punktowej rubryki sukcesu, limitu budżetu (\$0.15 / 12 kroków) oraz $100\%$ skuteczności wykrywania firm-widm (`UNVERIFIABLE_COMPANY`) na 25 referencyjnych firmach.
+
+---
+
 ## 🛠️ Instalacja i Szybki Start
 
 ```bash

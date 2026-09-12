@@ -64,10 +64,24 @@ def get_git_branch() -> str:
 def main():
     parser = argparse.ArgumentParser(description="JudgeKit Evaluation Runner CLI.")
     parser.add_argument(
+        "--target",
+        type=str,
+        default=None,
+        help="Target adapter spec 'module.path:ClassName' or 'path/to/file.py:ClassName'. Defaults to internal demo RAG.",
+    )
+    parser.add_argument(
         "--golden-set",
+        "--suite",
+        dest="golden_set",
         type=str,
         default="tests/evals/data/golden_set.jsonl",
-        help="Path to Golden Set .jsonl file.",
+        help="Path to Golden Set / Evaluation Suite .jsonl file.",
+    )
+    parser.add_argument(
+        "--gate-config",
+        type=str,
+        default=None,
+        help="Optional path to Quality Gate JSON config to enforce gate check immediately.",
     )
     parser.add_argument(
         "--output",
@@ -88,13 +102,21 @@ def main():
         print(f"[ERROR] Golden set file not found: {golden_path.resolve()}", file=sys.stderr)
         sys.exit(1)
 
-    print(f"Loading golden set from: {golden_path.resolve()}")
+    print(f"Loading golden set / suite from: {golden_path.resolve()}")
     test_cases = load_golden_set(golden_path)
     print(f"Loaded {len(test_cases)} test cases.")
 
-    rag = StandaloneDemoRAG(test_cases)
-    judge = JudgeClient(llm_client=None)
+    # Initialize target system
+    cases_map = {tc.query.strip().lower(): tc for tc in test_cases}
+    if args.target:
+        from judgekit.target_runner import load_target_adapter, TargetRunnerBridge
+        print(f"Loading dynamic target adapter: {args.target}")
+        adapter = load_target_adapter(args.target)
+        rag = TargetRunnerBridge(adapter, cases_map=cases_map)
+    else:
+        rag = StandaloneDemoRAG(test_cases)
 
+    judge = JudgeClient(llm_client=None)
     runner = EvalRunner(rag_client=rag, judge_client=judge, max_concurrency=args.max_concurrency)
 
     commit_sha = get_git_commit_sha()
@@ -107,18 +129,47 @@ def main():
     print("=" * 60)
     print("JUDGEKIT: PODSUMOWANIE EWALUACJI RUNNERA")
     print("=" * 60)
-    print(f"Commit SHA:            {summary.commit_sha}")
-    print(f"Branch:                {summary.branch}")
+    print(f"Commit SHA:              {summary.commit_sha}")
+    print(f"Branch:                  {summary.branch}")
     print(f"Przetestowane przypadki: {summary.total_cases}")
-    print(f"Mean Faithfulness:     {summary.mean_faithfulness:.4f}")
-    print(f"Mean Relevance:        {summary.mean_relevance:.4f}")
-    print(f"P50 Latency:           {summary.p50_latency_ms:.2f} ms")
-    print(f"P95 Latency:           {summary.p95_latency_ms:.2f} ms")
-    print(f"Krytyczne porazki:     {summary.critical_failures}")
-    print(f"Calkowity koszt USD:   ${summary.total_cost_usd:.6f}")
+    print(f"Mean Faithfulness:       {summary.mean_faithfulness:.4f}")
+    print(f"Mean Relevance:          {summary.mean_relevance:.4f}")
+    if summary.mean_citation_precision is not None:
+        print(f"Mean Citation Precision: {summary.mean_citation_precision:.4f}")
+    if summary.refusal_accuracy is not None:
+        print(f"Refusal Accuracy:        {summary.refusal_accuracy*100:.1f}%")
+    if summary.mean_rubric_score is not None:
+        print(f"Mean Rubric Score:       {summary.mean_rubric_score:.4f}")
+    if summary.stealth_accuracy is not None:
+        print(f"Stealth Zero-Halluc:     {summary.stealth_accuracy*100:.1f}%")
+    if summary.budget_compliance_rate is not None:
+        print(f"Budget Compliance Rate:  {summary.budget_compliance_rate*100:.1f}%")
+    if summary.avg_steps is not None:
+        print(f"Avg Steps Taken:         {summary.avg_steps:.2f}")
+    print(f"P50 Latency:             {summary.p50_latency_ms:.2f} ms")
+    print(f"P95 Latency:             {summary.p95_latency_ms:.2f} ms")
+    print(f"Krytyczne porazki:       {summary.critical_failures}")
+    print(f"Calkowity koszt USD:     ${summary.total_cost_usd:.6f}")
     print("=" * 60)
     print(f"[SUCCESS] Raport zapisano w: {out_path.resolve()}")
+
+    # If --gate-config provided, evaluate gate rules directly
+    if args.gate_config:
+        from judgekit.gate import evaluate_absolute_gate_rules
+        gate_cfg_path = Path(args.gate_config)
+        print("\n" + "=" * 60)
+        print(f"JUDGEKIT: WERYFIKACJA BRAMKI JAKOSCI ({gate_cfg_path.name})")
+        print("=" * 60)
+        gate_res = evaluate_absolute_gate_rules(summary, gate_config=gate_cfg_path)
+        if not gate_res.passed:
+            print("[FAIL] Bramka CI odrzuciła wyniki ewaluacji:")
+            for reason in gate_res.failure_reasons:
+                print(f"  [X] {reason}")
+            sys.exit(1)
+        else:
+            print("[PASS] Wszystkie warunki bramki jakości zostały spełnione!")
 
 
 if __name__ == "__main__":
     main()
+

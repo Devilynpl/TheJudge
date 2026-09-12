@@ -52,6 +52,14 @@ def ingest_evaluation_run(
     p95_lat = float(data.get("p95_latency_ms", 0.0))
     total_cost = float(data.get("total_cost_usd", 0.0))
 
+    mean_cit = data.get("mean_citation_precision")
+    refusal_acc = data.get("refusal_accuracy")
+    mean_rubric = data.get("mean_rubric_score")
+    stealth_acc = data.get("stealth_accuracy")
+    budget_rate = data.get("budget_compliance_rate")
+    avg_steps = data.get("avg_steps")
+    target_system = "BriefAgent" if mean_rubric is not None or stealth_acc is not None else "DocGround"
+
     with sqlite3.connect(resolved_db) as conn:
         cursor = conn.cursor()
 
@@ -59,18 +67,27 @@ def ingest_evaluation_run(
         cursor.execute(
             """
             INSERT OR REPLACE INTO runs (
-                run_id, timestamp, commit_sha, branch,
-                mean_faithfulness, mean_relevance, p95_latency_ms,
+                run_id, timestamp, target_system, commit_sha, branch,
+                mean_faithfulness, mean_relevance, mean_citation_precision,
+                refusal_accuracy, mean_rubric_score, stealth_accuracy,
+                budget_compliance_rate, avg_steps, p95_latency_ms,
                 total_cost_usd, golden_set_version
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 assigned_run_id,
                 assigned_timestamp,
+                target_system,
                 commit_sha,
                 branch,
                 mean_faith,
                 mean_rel,
+                mean_cit,
+                refusal_acc,
+                mean_rubric,
+                stealth_acc,
+                budget_rate,
+                avg_steps,
                 p95_lat,
                 total_cost,
                 golden_set_version,
@@ -85,8 +102,11 @@ def ingest_evaluation_run(
                 INSERT INTO test_results (
                     run_id, test_id, query, generated_answer,
                     faithfulness_score, faithfulness_reasoning,
-                    relevance_score, relevance_reasoning, latency_ms
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    relevance_score, relevance_reasoning,
+                    citation_precision, refusal_correct, rubric_score,
+                    stealth_verified, budget_compliant, step_count,
+                    latency_ms, cost_usd
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     assigned_run_id,
@@ -97,7 +117,14 @@ def ingest_evaluation_run(
                     c.get("faithfulness_reasoning", ""),
                     c.get("relevance_score", 0.0),
                     c.get("relevance_reasoning", ""),
+                    c.get("citation_precision"),
+                    1 if c.get("refusal_correct") else (0 if c.get("refusal_correct") is False else None),
+                    c.get("rubric_score"),
+                    1 if c.get("stealth_verified") else (0 if c.get("stealth_verified") is False else None),
+                    1 if c.get("budget_compliant") else (0 if c.get("budget_compliant") is False else None),
+                    c.get("step_count"),
                     c.get("latency_ms", 0.0),
+                    c.get("cost_usd", 0.0),
                 ),
             )
 

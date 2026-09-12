@@ -10,10 +10,17 @@ CREATE_RUNS_TABLE = """
 CREATE TABLE IF NOT EXISTS runs (
     run_id TEXT PRIMARY KEY,
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    target_system TEXT DEFAULT 'RAG',
     commit_sha TEXT,
     branch TEXT,
     mean_faithfulness REAL,
     mean_relevance REAL,
+    mean_citation_precision REAL,
+    refusal_accuracy REAL,
+    mean_rubric_score REAL,
+    stealth_accuracy REAL,
+    budget_compliance_rate REAL,
+    avg_steps REAL,
     p95_latency_ms REAL,
     total_cost_usd REAL,
     golden_set_version TEXT
@@ -31,7 +38,14 @@ CREATE TABLE IF NOT EXISTS test_results (
     faithfulness_reasoning TEXT,
     relevance_score REAL,
     relevance_reasoning TEXT,
+    citation_precision REAL,
+    refusal_correct INTEGER,
+    rubric_score REAL,
+    stealth_verified INTEGER,
+    budget_compliant INTEGER,
+    step_count INTEGER,
     latency_ms REAL,
+    cost_usd REAL,
     FOREIGN KEY(run_id) REFERENCES runs(run_id)
 );
 """

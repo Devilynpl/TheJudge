@@ -10,6 +10,7 @@ Implements:
 
 import asyncio
 import json
+import re
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Protocol, Union
@@ -43,6 +44,12 @@ class RunSummary(BaseModel):
     total_cases: int = Field(..., description="Total number of evaluated test cases.")
     mean_faithfulness: float = Field(..., description="Average faithfulness score.")
     mean_relevance: float = Field(..., description="Average answer relevance score.")
+    mean_citation_precision: Optional[float] = Field(default=None, description="Average citation precision score.")
+    refusal_accuracy: Optional[float] = Field(default=None, description="Deterministic refusal accuracy for unanswerables.")
+    mean_rubric_score: Optional[float] = Field(default=None, description="Average rubric agreement score (for agent briefs).")
+    stealth_accuracy: Optional[float] = Field(default=None, description="Zero-hallucination accuracy for stealth entities.")
+    budget_compliance_rate: Optional[float] = Field(default=None, description="Fraction of runs compliant with hard budgets.")
+    avg_steps: Optional[float] = Field(default=None, description="Average steps taken per run.")
     p50_latency_ms: float = Field(..., description="Median P50 latency in milliseconds.")
     p95_latency_ms: float = Field(..., description="95th percentile latency in milliseconds.")
     critical_failures: int = Field(..., description="Number of critical failures (faithfulness == 0.0).")
@@ -80,6 +87,25 @@ def compute_run_summary(
     crit_failures = sum(1 for s in faith_scores if s == 0.0)
     total_cost = float(sum(costs))
 
+    # Extended metrics
+    cit_precisions = [r.citation_precision for r in results if r.citation_precision is not None]
+    mean_cit_prec = float(np.mean(cit_precisions)) if cit_precisions else None
+
+    refusals = [r.refusal_correct for r in results if r.refusal_correct is not None]
+    refusal_acc = float(np.mean([1.0 if v else 0.0 for v in refusals])) if refusals else None
+
+    rubrics = [r.rubric_score for r in results if r.rubric_score is not None]
+    mean_rubric = float(np.mean(rubrics)) if rubrics else None
+
+    stealths = [r.stealth_verified for r in results if r.stealth_verified is not None]
+    stealth_acc = float(np.mean([1.0 if v else 0.0 for v in stealths])) if stealths else None
+
+    budgets = [r.budget_compliant for r in results if r.budget_compliant is not None]
+    budget_rate = float(np.mean([1.0 if v else 0.0 for v in budgets])) if budgets else None
+
+    steps = [r.step_count for r in results if r.step_count is not None]
+    avg_step_count = float(np.mean(steps)) if steps else None
+
     cases_dump = [r.model_dump() for r in results]
 
     return RunSummary(
@@ -88,6 +114,12 @@ def compute_run_summary(
         total_cases=len(results),
         mean_faithfulness=round(mean_faith, 4),
         mean_relevance=round(mean_rel, 4),
+        mean_citation_precision=round(mean_cit_prec, 4) if mean_cit_prec is not None else None,
+        refusal_accuracy=round(refusal_acc, 4) if refusal_acc is not None else None,
+        mean_rubric_score=round(mean_rubric, 4) if mean_rubric is not None else None,
+        stealth_accuracy=round(stealth_acc, 4) if stealth_acc is not None else None,
+        budget_compliance_rate=round(budget_rate, 4) if budget_rate is not None else None,
+        avg_steps=round(avg_step_count, 2) if avg_step_count is not None else None,
         p50_latency_ms=round(p50, 2),
         p95_latency_ms=round(p95, 2),
         critical_failures=crit_failures,
@@ -169,19 +201,76 @@ class EvalRunner:
 
                 faith_verdict, rel_verdict = await asyncio.gather(faith_task, rel_task)
 
-                # 3. Calculate operational cost
-                cost = (
+                # 3. Target metadata extraction (citations, refusals, rubric, budgets)
+                cit_precision = None
+                refusal_correct = None
+                rubric_score = None
+                stealth_verified = None
+                budget_compliant = None
+                step_count = getattr(raw_rag_response, "step_count", None)
+                status = getattr(raw_rag_response, "status", None)
+                cost_override = getattr(raw_rag_response, "cost_usd", 0.0)
+                meta = getattr(raw_rag_response, "metadata", {}) or {}
+
+                # Citation precision extraction
+                if "citation_precision" in meta:
+                    cit_precision = float(meta["citation_precision"])
+                elif re.findall(r"\[\[.*?\]\]", answer):
+                    # Check citations against contexts
+                    citations = re.findall(r"\[\[.*?\]\]", answer)
+                    valid_cits = sum(1 for c in citations if any(c.strip("[]") in ctx for ctx in contexts))
+                    cit_precision = valid_cits / len(citations) if citations else 1.0
+
+                # Deterministic refusal check for out-of-domain / unanswerables
+                is_unanswerable = any(
+                    term in tc.category.lower() or term in tc.expected_behavior.lower()
+                    for term in ["unanswerable", "out_of_domain", "nie wiem", "brak informacji", "refuse"]
+                )
+                if is_unanswerable:
+                    refusal_keywords = [
+                        "nie jestem w stanie odpowiedzieć",
+                        "brak pasujących informacji",
+                        "dokumentacja nie zawiera",
+                        "nie wiem",
+                        "unverifiable",
+                    ]
+                    refusal_correct = any(rk in answer.lower() for rk in refusal_keywords)
+
+                # Stealth / phantom company verification
+                if "stealth" in tc.category.lower() or "adversarial" in tc.category.lower() or "phantom" in tc.category.lower():
+                    stealth_verified = (status == "UNVERIFIABLE_COMPANY") or ("unverifiable" in answer.lower())
+
+                # Rubric check
+                if "rubric_score" in meta:
+                    rubric_score = float(meta["rubric_score"])
+
+                # Budget compliance
+                max_steps_allowed = meta.get("max_steps", 12)
+                max_cost_allowed = meta.get("max_cost_usd", 0.15)
+                budget_compliant = (step_count is None or step_count <= max_steps_allowed) and (
+                    cost_override <= max_cost_allowed
+                )
+
+                # 4. Calculate operational cost
+                calc_cost = (
                     (inp_tokens * self.cost_per_1m_input) + (out_tokens * self.cost_per_1m_output)
                 ) / 1_000_000.0
+                final_cost = cost_override if cost_override > 0 else calc_cost
 
                 return PipelineMetrics(
                     test_id=tc.id,
                     latency_ms=round(latency_ms, 2),
                     input_tokens=inp_tokens,
                     output_tokens=out_tokens,
-                    cost_usd=round(cost, 6),
+                    cost_usd=round(final_cost, 6),
                     faithfulness_score=faith_verdict.score,
                     relevance_score=rel_verdict.score,
+                    citation_precision=cit_precision,
+                    refusal_correct=refusal_correct,
+                    rubric_score=rubric_score,
+                    stealth_verified=stealth_verified,
+                    budget_compliant=budget_compliant,
+                    step_count=step_count,
                     faithfulness_reasoning=faith_verdict.reasoning,
                     relevance_reasoning=rel_verdict.reasoning,
                 )
