@@ -118,8 +118,7 @@ TheJudge/
 ├── data/                           # Baza relacyjna SQLite (eval_history.db)
 ├── documentation/                  # Specyfikacje faz od 1 do 10 i engineering notes
 │   ├── engineering_notes.md        # Wnioski inżynierskie, ryzyka i decyzje architektoniczne
-│   ├── faza1.md ... faza10.md      # Odznaczone specyfikacje wymagań
-│   └── master.md
+│   └── faza1.md ... faza10.md      # Odznaczone specyfikacje wymagań
 ├── src/
 │   └── judgekit/
 │       ├── alignment.py            # Analiza zgodności z ekspertem (Cohen's Kappa)
