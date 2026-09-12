@@ -1,19 +1,17 @@
-Faza 9: Dashboard trendów i historii (Streamlit / FastHTML / SQLite)
+# Faza 9: Dashboard trendów i historii (Streamlit + SQLite)
 
-Komentarz w PR (Faza 8) działa jak bezpiecznik na poziomie pojedynczego commita. Z czasem pojawia się jednak potrzeba widoku strategicznego: „Czy przez ostatnie 3 miesiące jakość sukcesywnie rośnie, czy stopniowo rośnie nam opóźnienie (latency creep) i puchną koszty?”.
+Komentarz pod PR (Faza 8) działa jak bezpiecznik na poziomie pojedynczego commita. Z czasem pojawia się jednak potrzeba widoku strategicznego: *„Czy przez ostatnie 3 miesiące jakość sukcesywnie rośnie, czy stopniowo narasta opóźnienie (latency creep) i puchną koszty tokenów?”*.
 
-Cel: stworzyć lekki, prosty dashboard analityczny oparty o SQLite i Streamlit, który wizualizuje trendy metryk w czasie oraz pozwala eksplorować poszczególne odpowiedzi i halucynacje.
+**Cel:** stworzyć lekki, interaktywny dashboard analityczny oparty o SQLite i Streamlit, który wizualizuje trendy metryk w czasie oraz pozwala na audyt pojedynczych odpowiedzi i halucynacji.
 
-1. Schemat bazy danych (eval_history.db)
+---
 
-Wszystkie przebiegi zapisujemy w relacyjnej bazie SQLite. Wystarczą dwie powiązane tabele:
+### 1. Schemat relacyjnej bazy danych (`eval_history.db`)
+Wszystkie oficjalne przebiegi zapisujemy w relacyjnej bazie SQLite w dwóch powiązanych tabelach:
+- `runs`: podsumowanie całego testu (agregaty, wersja commita, metryki globalne P95, mean faithfulness, koszt).
+- `test_results`: szczegółowy zrzut per pytanie (wygenerowana odpowiedź, punkty, uzasadnienie CoT sędziego).
 
-    runs: podsumowanie całego testu (agregaty, wersja commita, metryki globalne).
-
-    test_results: szczegółowy zrzut per pytanie (wygenerowana treść, scoring, reasoning).
-
-SQL
-
+```sql
 CREATE TABLE IF NOT EXISTS runs (
     run_id TEXT PRIMARY KEY,
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -36,21 +34,23 @@ CREATE TABLE IF NOT EXISTS test_results (
     faithfulness_reasoning TEXT,
     FOREIGN KEY(run_id) REFERENCES runs(run_id)
 );
+```
 
-2. Kod dashboardu analitycznego (dashboard.py)
+---
 
-Poniższy skrypt Streamlit ładuje historię z bazy i generuje wykresy trendów oraz interaktywny inspektor regresji:
-Python
+### 2. Aplikacja analityczna (`dashboard.py`)
+Skrypt Streamlit pobiera historię z bazy i generuje wykresy trendów oraz interaktywny inspektor błędów:
 
-import streamlit as st
+```python
 import sqlite3
 import pandas as pd
 import plotly.express as px
+import streamlit as st
 
 st.set_page_config(page_title="JudgeKit Trends", layout="wide")
 st.title("⚖️ JudgeKit: Historia Jakości i Wydajności")
 
-# Połączenie z lokalną bazą danych
+# Połączenie z bazą
 conn = sqlite3.connect("data/eval_history.db")
 
 # 1. Pobranie danych zagregowanych
@@ -118,13 +118,9 @@ if show_failures_only:
     results_df = results_df[results_df["faithfulness_score"] < 1.0]
 
 st.dataframe(results_df, use_container_width=True)
+```
 
-3. Ingest danych po scaleniu (Merge Hook)
+---
 
-Kiedy PR wchodzi do gałęzi main, skrypt ingestu (ingest_run.py) pobiera plik eval_run_.json i dopisuje rekord do bazy SQLite:
-
-    Pobiera metryki P95, mean faithfulness i relevance.
-
-    Zapisuje wszystkie wygenerowane odpowiedzi oraz uzasadnienia sędziego.
-
-    Jeśli baza jest w chmurze (np. darmowy PostgreSQL na Neon/Supabase), cały zespół ma natychmiastowy wgląd przez przeglądarkę pod adresem dashboardu.
+### 3. Ingest danych po scaleniu (`ingest_run.py`)
+Kiedy PR zostaje scalony do `main`, skrypt ingestu pobiera plik `eval_run_<commit_sha>.json` i dopisuje rekord do bazy SQLite, zasilając historyczne wykresy.

@@ -1,4 +1,25 @@
-Faza 7: Integracja bramki CI/CD (GitHub Actions Quality Gate)W tej fazie łączymy Runnera (Faza 5) i Komparator (Faza 6) w nienaruszalną regułę wytwarzania kodu: Pull Request nie może zostać scalony (merged), jeśli metryki jakości spadną poniżej założonego progu lub wystąpi niedopuszczalna regresja.Cel: skonfigurować workflow GitHub Actions, który automatycznie pobiera baseline, uruchamia ewaluację dla nowego kodu i blokuje PR przy wykryciu problemów.1. Logika decyzyjna bramki (Quality Gate Rules)Pipeline weryfikuje 3 twarde warunki (Hard Failures):Brak spadku wierności: Średnia wierność ($\Delta_{\text{faithfulness}}$) nie może spaść o więcej niż 0.02 (2 punkty procentowe).Zero krytycznych regresji faktograficznych: Liczba zapytań ze spadkiem z $1.0 \to 0.0$ musi wynosić dokładnie 0.Limit wydajnościowy (SLO): $P95\text{ latency}$ nie może wzrosnąć o więcej niż 250 ms w stosunku do gałęzi main.2. Skrypt CLI bramki jakości (cli_gate.py)Skrypt przyjmuje raport porównawczy z Fazy 6 i decyduje o kodzie wyjścia procesu systemu operacyjnego:Pythonimport sys
+# Faza 7: Integracja bramki CI/CD (GitHub Actions Quality Gate)
+
+W tej fazie łączymy Runnera (Faza 5) i Komparator (Faza 6) w nienaruszalną regułę wytwarzania kodu: **Pull Request nie może zostać scalony (merged), jeśli metryki jakości spadną poniżej założonego progu lub wystąpi niedopuszczalna regresja.**
+
+**Cel:** skonfigurować workflow GitHub Actions, który automatycznie pobiera oficjalny baseline, uruchamia ewaluację dla nowego kodu w PR i twardo blokuje merge w razie wykrycia problemów.
+
+---
+
+### 1. Logika decyzyjna bramki (Quality Gate Rules)
+Pipeline weryfikuje 3 twarde warunki (**Hard Failures**):
+
+1. **Brak spadku wierności:** Średnia wierność ($\Delta_{\text{faithfulness}}$) nie może spaść o więcej niż 0.02 (2 punkty procentowe).
+2. **Zero krytycznych regresji faktograficznych:** Liczba zapytań ze spadkiem z $1.0 \to 0.0$ musi wynosić dokładnie 0.
+3. **Limit wydajnościowy (SLO):** $P95\text{ latency}$ nie może wzrosnąć o więcej niż 250 ms w stosunku do gałęzi `main`.
+
+---
+
+### 2. Skrypt CLI bramki jakości (`cli_gate.py`)
+Skrypt przyjmuje raport porównawczy i decyduje o kodzie wyjścia procesu systemu operacyjnego:
+
+```python
+import sys
 import json
 from pathlib import Path
 
@@ -40,7 +61,14 @@ def evaluate_gate(diff_report_path: str):
 
 if __name__ == "__main__":
     evaluate_gate(sys.argv[1])
-3. Workflow GitHub Actions (.github/workflows/eval_gate.yml)Workflow korzysta z mechanizmu cache/artefaktów, aby pobrać oficjalny baseline z gałęzi main, uruchomić test na kodzie z PR i zablokować proces w razie błędu.YAMLname: JudgeKit Eval Quality Gate
+```
+
+---
+
+### 3. Workflow GitHub Actions (`.github/workflows/eval_gate.yml`)
+
+```yaml
+name: JudgeKit Eval Quality Gate
 
 on:
   pull_request:
@@ -98,4 +126,9 @@ jobs:
         with:
           name: eval-results-pr-${{ github.event.pull_request.number }}
           path: artifacts/
-4. Utrzymanie aktualnego Baseline (update_baseline.yml)Gdy PR zostanie zaakceptowany i zmergowany do main, uruchamia się osobny workflow, który przetwarza kod na main i publikuje wygenerowany candidate.json jako nowy baseline-eval-result. Dzięki temu każdy kolejny deweloper automatycznie porównuje się z najświeższym stabilnym stanem aplikacji.
+```
+
+---
+
+### 4. Utrzymanie aktualnego Baseline (`update_baseline.yml`)
+Gdy PR zostanie zaakceptowany i zmergowany do `main`, uruchamia się osobny workflow publikujący wygenerowany `candidate.json` jako nowy oficjalny `baseline-eval-result`. Dzięki temu każdy kolejny deweloper automatycznie porównuje swój kod z najświeższym stabilnym stanem aplikacji.
