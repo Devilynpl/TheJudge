@@ -108,3 +108,21 @@ Ten dokument służy do ciągłego rejestrowania uwag, ryzyk, braków w specyfik
    - *Wniosek:* Aby pipeline w CI mógł jednoznacznie decydować o przejściu lub zatrzymaniu buildu, skrypt `cli_compare.py` weryfikuje twarde reguły progowe (`--max-regressions`, `--max-p95-latency-increase-ms`, `--max-faithfulness-drop`) i zwraca `sys.exit(1)` przy jakimkolwiek naruszeniu.
 
 ---
+
+## Faza 7: Integracja bramki CI/CD (GitHub Actions Quality Gate)
+
+### Obserwacje i zidentyfikowane ryzyka:
+1. **Zimny start repozytorium (Cold Start Baseline):**
+   - *Problem:* Podczas pierwszego uruchomienia workflow na nowym repozytorium artefakt `baseline-eval-result` nie istnieje jeszcze w magazynie GitHub Actions (`actions/download-artifact` zakończyłby się błędem).
+   - *Rozwiązanie:* W `.github/workflows/eval_gate.yml` dodano `continue-on-error: true` przy pobieraniu artefaktu oraz krok rezerwowy generujący lokalny baseline, jeśli plik nie został pobrany z chmury.
+
+2. **Dwuetapowy cykl życia artefaktów (PR vs Main):**
+   - *Wniosek:* Rozdzielenie workflow na dwa procesy:
+     - `eval_gate.yml` (uruchamiany na `pull_request` – ewaluacja kandydata, komparacja, blokada PR kodem `sys.exit(1)`),
+     - `update_baseline.yml` (uruchamiany po `push` do `main` – publikacja zaktualizowanego oficjalnego baseline).
+     Zapewnia to, że deweloperzy w PR zawsze porównują się ze stabilnym stanem produkcyjnym bez ryzyka wyścigu baseline'ów.
+
+3. **Separacja sekretów i testów jednostkowych:**
+   - *Wniosek:* Krok `pytest tests/unit/` w GitHub Actions wykonuje się przed odpytaniem sędziów AI, co natychmiast blokuje PR w przypadku błędów syntaktycznych lub logicznych bez ponoszenia kosztów tokenów API.
+
+---

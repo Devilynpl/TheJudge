@@ -1,0 +1,42 @@
+name: Update Baseline Artifact
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'src/**'
+      - 'tests/evals/data/**'
+
+jobs:
+  update-baseline:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main branch
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -e .
+
+      - name: Run Master Evaluation on Main Branch
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          python -m judgekit.cli_runner \
+            --golden-set tests/evals/data/golden_set.jsonl \
+            --output artifacts/baseline.json
+
+      - name: Publish Official Baseline Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: baseline-eval-result
+          path: artifacts/baseline.json
+          overwrite: true

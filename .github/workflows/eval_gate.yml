@@ -1,0 +1,73 @@
+name: JudgeKit Eval Quality Gate
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'src/**'
+      - 'tests/evals/data/**'
+      - 'pyproject.toml'
+      - 'requirements.txt'
+
+jobs:
+  run-eval-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -e .
+
+      - name: Run Unit Tests
+        run: |
+          pytest tests/unit/ -v
+
+      - name: Download Baseline Artifact from main branch
+        uses: actions/download-artifact@v4
+        with:
+          name: baseline-eval-result
+          path: artifacts/
+        continue-on-error: true # Graceful fallback on first run in repository
+
+      - name: Generate Baseline if artifact does not exist
+        run: |
+          if [ ! -f artifacts/baseline.json ]; then
+            echo "Baseline artifact not found. Generating default baseline..."
+            python -m judgekit.cli_runner --output artifacts/baseline.json
+          fi
+
+      - name: Run Candidate Evaluation
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          python -m judgekit.cli_runner \
+            --golden-set tests/evals/data/golden_set.jsonl \
+            --output artifacts/candidate.json
+
+      - name: Compare A/B (Baseline vs Candidate)
+        run: |
+          python -m judgekit.cli_compare \
+            --baseline artifacts/baseline.json \
+            --candidate artifacts/candidate.json \
+            --output artifacts/diff_report.json
+
+      - name: Enforce CI/CD Quality Gate
+        run: |
+          python -m judgekit.cli_gate artifacts/diff_report.json
+
+      - name: Upload PR Evaluation Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results-pr-${{ github.event.pull_request.number || github.sha }}
+          path: artifacts/
