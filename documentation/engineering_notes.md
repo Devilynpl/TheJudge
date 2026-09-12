@@ -93,3 +93,18 @@ Ten dokument służy do ciągłego rejestrowania uwag, ryzyk, braków w specyfik
    - *Wniosek:* Wygenerowany raport JSON zawiera zarówno podsumowanie statystyczne z commit SHA i gałęzią Git, jak i pełen wykaz pojedynczych przypadków testowych (`cases`), co stanowi kompletne wejście dla komparatora A/B w Fazie 6.
 
 ---
+
+## Faza 6: Moduł porównawczy A/B i detektor regresji (Baseline vs Candidate)
+
+### Obserwacje i zidentyfikowane ryzyka:
+1. **Zjawisko cichej regresji (Silent Regression Trap):**
+   - *Problem:* Zmiana w promptcie bazowym może podnieść ogólną średnią wierność (np. +3%), ale zepsuć 2 kluczowe zapytania o krytycznym znaczeniu biznesowym (spadek 1.0 -> 0.0). Zwykłe porównanie średnich globalnych nie zauważy takiego incydentu.
+   - *Rozwiązanie:* `compare_runs` w `src/judgekit/comparator.py` prowadzi analizę na dwóch poziomach: **Global Delta** ($\Delta_{\text{metric}}$) oraz **Pointwise Diff** per rekord ze zliczaniem `critical_regressions_count`.
+
+2. **Dopasowywanie przypadków testowych w A/B:**
+   - *Wniosek:* Jeśli w gałęzi kandydata dodano lub usunięto przypadek testowy, komparator porównuje wyłącznie część wspólną identyfikatorów (`test_id`), odnotowując `total_compared_cases`. Zapobiega to zakłamaniom różnic wynikającym ze zmian rozmiaru próby.
+
+3. **Determinizm kodów wyjścia (CLI Exit Codes):**
+   - *Wniosek:* Aby pipeline w CI mógł jednoznacznie decydować o przejściu lub zatrzymaniu buildu, skrypt `cli_compare.py` weryfikuje twarde reguły progowe (`--max-regressions`, `--max-p95-latency-increase-ms`, `--max-faithfulness-drop`) i zwraca `sys.exit(1)` przy jakimkolwiek naruszeniu.
+
+---
