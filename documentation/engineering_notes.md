@@ -126,3 +126,23 @@ Ten dokument służy do ciągłego rejestrowania uwag, ryzyk, braków w specyfik
    - *Wniosek:* Krok `pytest tests/unit/` w GitHub Actions wykonuje się przed odpytaniem sędziów AI, co natychmiast blokuje PR w przypadku błędów syntaktycznych lub logicznych bez ponoszenia kosztów tokenów API.
 
 ---
+
+## Faza 8: Raportowanie PR (Bot komentujący w Markdown)
+
+### Obserwacje i zidentyfikowane ryzyka:
+1. **Unikanie spamu w konwersacji Pull Requesta (Idempotentne komentarze):**
+   - *Problem:* Jeśli bot publikuje nowy komentarz przy każdym commit pushniętym do brancha PR, konwersacja pod PR-em szybko staje się nieczytelna.
+   - *Rozwiązanie:* Zaimplementowano znacznik HTML `<!-- judgekit-pr-comment -->` w nagłówku generowanego Markdownu. `pr_commenter.py` przeszukuje istniejące komentarze pod danym PR-em i jeśli znajdzie komentarz z tym tagiem, aktualizuje go metodą `PATCH /repos/{repo}/issues/comments/{comment_id}` zamiast tworzyć kolejny (`POST`).
+
+2. **Bezpieczeństwo uprawnień w GitHub Actions (`permissions: pull-requests: write`):**
+   - *Problem:* Domyślne uprawnienia `GITHUB_TOKEN` w nowo zakładanych repozytoriach GitHub często mają tryb `read-only`, co powodowałoby błąd HTTP 403 przy próbie zapisu komentarza.
+   - *Rozwiązanie:* Do workflow `eval_gate.yml` dodano sekcję `permissions` jawnie przyznającą uprawnienia `pull-requests: write` oraz `issues: write`.
+
+3. **Kodowanie terminala Windows (cp1250 / Unicode):**
+   - *Problem:* Narzędzie CLI `cli_comment.py` wypisujące raport Markdown zawierający emoji (`✅`, `❌`, `⚖️`) rzucało wyjątek `UnicodeEncodeError: 'charmap'` w domyślnej powłoce Windows PowerShell.
+   - *Rozwiązanie:* Wprowadzono automatyczną rekonfigurację strumieni `sys.stdout` i `sys.stderr` do kodowania `utf-8` z obsługą `errors="replace"`.
+
+4. **Widoczność diagnostyczna (Chain-of-Thought w `<details>`):**
+   - *Wniosek:* Zgrupowanie wykrytych regresji w zwijany blok HTML `<details>` pozwala inżynierom natychmiast zobaczyć ogólny stan w tabeli podsumowującej, a w razie potrzeby jednym kliknięciem sprawdzić pełne uzasadnienie LLM (CoT) dla każdego zepsutego przypadku testowego.
+
+---

@@ -9,9 +9,9 @@ Samo zablokowanie pipeline'u w CI to za mało — programista nie powinien przek
 ### 1. Struktura idealnego komentarza PR
 Raport musi umożliwiać diagnozę problemu w 5 sekund:
 
-1. **Status Badge:** Czytelny status: zielony (`EVAL PASSED`) lub czerwony (`EVAL BLOCKED`).
-2. **Kompaktowa tabela metryk:** Wartości z `main`, wartości z PR oraz różnica $\Delta$.
-3. **Rozwijana sekcja regresji (`<details>`):** Precyzyjne wskazanie, które konkretnie zapytania z Golden Setu uległy pogorszeniu wraz z uzasadnieniem sędziego (Chain-of-Thought).
+- [x] ~~**Status Badge:** Czytelny status: zielony (`EVAL PASSED`) lub czerwony (`EVAL BLOCKED`).~~
+- [x] ~~**Kompaktowa tabela metryk:** Wartości z `main`, wartości z PR oraz różnica $\Delta$.~~
+- [x] ~~**Rozwijana sekcja regresji (`<details>`):** Precyzyjne wskazanie, które konkretnie zapytania z Golden Setu uległy pogorszeniu wraz z uzasadnieniem sędziego (Chain-of-Thought).~~
 
 #### Przykładowy format raportu Markdown:
 
@@ -37,4 +37,5 @@ Raport musi umożliwiać diagnozę problemu w 5 sekund:
 ---
 
 ### 2. Generator komentarza (`pr_commenter.py`)
-Skrypt generuje powyższy raport na podstawie pliku `diff_report.json` i przy użyciu tokenu GitHub (`GITHUB_TOKEN`) dodaje lub edytuje komentarz pod danym numerem Pull Requesta.
+- [x] ~~Skrypt generuje powyższy raport na podstawie pliku `diff_report.json` i przy użyciu tokenu GitHub (`GITHUB_TOKEN`) dodaje lub edytuje komentarz pod danym numerem Pull Requesta.~~
+- [x] ~~Wdrożenie modułu CLI `judgekit.cli_comment` oraz integracja kroków w GitHub Actions workflow (`eval_gate.yml`).~~

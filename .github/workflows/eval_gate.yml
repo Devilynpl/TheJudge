@@ -9,6 +9,11 @@ on:
       - 'pyproject.toml'
       - 'requirements.txt'
 
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
 jobs:
   run-eval-gate:
     runs-on: ubuntu-latest
@@ -61,6 +66,20 @@ jobs:
             --candidate artifacts/candidate.json \
             --output artifacts/diff_report.json
 
+      - name: Post or Update PR Evaluation Comment
+        if: always() && github.event_name == 'pull_request'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          if [ -f artifacts/diff_report.json ]; then
+            python -m judgekit.cli_comment \
+              --diff-report artifacts/diff_report.json \
+              --baseline artifacts/baseline.json \
+              --candidate artifacts/candidate.json \
+              --post-to-pr
+          fi
+
       - name: Enforce CI/CD Quality Gate
         run: |
           python -m judgekit.cli_gate artifacts/diff_report.json
@@ -71,3 +90,4 @@ jobs:
         with:
           name: eval-results-pr-${{ github.event.pull_request.number || github.sha }}
           path: artifacts/
+
