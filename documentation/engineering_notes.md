@@ -39,3 +39,22 @@ Ten dokument służy do ciągłego rejestrowania uwag, ryzyk, braków w specyfik
    - *Wniosek:* Aby zachować determinizm testów porównawczych w CI (np. w Faza 6 i 7), zbiór testowy musi być powiązany z commitem gita lub hashem zawartości (SHA-256), a nie tylko luźną nazwą v1/v2, aby wyeliminować porównywanie runów o różnej liczebności próbek.
 
 ---
+
+## Faza 3: Implementacja i kalibracja Sędziego (LLM-as-a-Judge)
+
+### Obserwacje i zidentyfikowane ryzyka:
+1. **Determinizm ocen i temperatura (Temperature = 0.0):**
+   - *Problem:* LLM-as-a-Judge z temperaturą domyślną (np. 0.7 lub 1.0) powoduje fluktuacje ocen tego samego kodu w kolejnych uruchomieniach CI (tzw. flaky evals).
+   - *Rozwiązanie:* `JudgeClient` wymusza na stałe `temperature = 0.0`.
+   
+2. **Score Compression & Continuous Drift:**
+   - *Problem:* Nawet przy instrukcji podawania 0.0, 0.5 lub 1.0, niektóre modele mogą zwrócić floaty ciągłe (np. 0.85).
+   - *Rozwiązanie:* Walidator `MetricVerdict` w `src/judgekit/judge.py` automatycznie mapuje oceny ciągłe do najbliższego dyskretnego progu (round-to-threshold: `< 0.25 -> 0.0`, `0.25..0.75 -> 0.5`, `> 0.75 -> 1.0`), gwarantując spójność rubryki punktowej.
+
+3. **Asynchroniczność w testach a środowisko Python 3.14:**
+   - *Wniosek:* Funkcja `asyncio.iscoroutinefunction` jest oznaczona jako deprecated w Python 3.14 (usunięcie w 3.16). W `src/judgekit/judge.py` zastosowano nowoczesne `inspect.iscoroutinefunction`, co eliminuje deprecation warnings. W testach jednostkowych zastosowano `asyncio.run()`, co zapewnia bezbłędne uruchamianie zarówno przy standardowym `pytest`, jak i wtyczce `pytest-asyncio`.
+
+4. **Konieczność modułowości (Modular Single-Responsibility Judges):**
+   - *Wniosek:* Połączenie oceny wierności (Faithfulness) z trafnością (Relevance) w jednym prompcie prowadzi do zafałszowania wyników (np. kwiecista odpowiedź nie na temat otrzymuje wysoką ocenę za brak halucynacji). Zastosowano 3 całkowicie odseparowane prompty (`Faithfulness`, `Relevance`, `Safety`).
+
+---
