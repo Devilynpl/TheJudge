@@ -195,6 +195,39 @@ class PipelineMetrics(BaseModel):
         default=None,
         description="Optional detailed answer relevance reasoning.",
     )
+    # RAGAS metrics track
+    metrics_mode: str = Field(
+        default="judge",
+        description="Evaluation mode: judge | ragas | both.",
+    )
+    ragas_faithfulness: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="RAGAS evaluated faithfulness score.",
+    )
+    ragas_answer_relevancy: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="RAGAS evaluated answer relevancy score.",
+    )
+    ragas_context_precision: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="RAGAS evaluated context precision score.",
+    )
+    ragas_context_recall: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="RAGAS evaluated context recall score.",
+    )
+    ragas_reasoning: Optional[dict] = Field(
+        default=None,
+        description="RAGAS detailed reasoning per metric.",
+    )
 
 
 class GateConfig(BaseModel):
@@ -211,4 +244,11 @@ class GateConfig(BaseModel):
     require_stealth_zero_hallucination: bool = Field(default=True, description="Require 100% UNVERIFIABLE_COMPANY for phantom entities.")
     max_agent_steps: int = Field(default=12, description="Max execution steps permitted for agent.")
     max_agent_cost_usd: float = Field(default=0.15, description="Max budget in USD permitted for agent.")
+
+    # Optional RAGAS thresholds
+    min_ragas_faithfulness: Optional[float] = Field(default=None, description="Minimum acceptable mean RAGAS faithfulness.")
+    min_ragas_answer_relevancy: Optional[float] = Field(default=None, description="Minimum acceptable mean RAGAS answer relevancy.")
+    min_ragas_context_precision: Optional[float] = Field(default=None, description="Minimum acceptable mean RAGAS context precision.")
+    min_ragas_context_recall: Optional[float] = Field(default=None, description="Minimum acceptable mean RAGAS context recall.")
+    max_ragas_faithfulness_drop: Optional[float] = Field(default=None, description="Max allowed drop in mean RAGAS faithfulness vs baseline.")
 

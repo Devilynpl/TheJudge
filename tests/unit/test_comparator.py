@@ -114,3 +114,49 @@ def test_export_diff_report(tmp_path):
 
     assert exported.exists()
     assert '"delta_faithfulness": 0.05' in exported.read_text(encoding="utf-8")
+
+
+def test_compare_runs_with_ragas_metrics():
+    baseline_data = {
+        "commit_sha": "base1",
+        "mean_faithfulness": 0.90,
+        "mean_relevance": 0.90,
+        "ragas_mean_faithfulness": 0.95,
+        "ragas_mean_answer_relevancy": 0.92,
+        "p95_latency_ms": 100.0,
+        "cases": [
+            {
+                "test_id": "c-1",
+                "faithfulness_score": 1.0,
+                "relevance_score": 1.0,
+                "ragas_faithfulness": 1.0,
+            }
+        ],
+    }
+
+    candidate_data = {
+        "commit_sha": "cand2",
+        "mean_faithfulness": 0.90,
+        "mean_relevance": 0.90,
+        "ragas_mean_faithfulness": 0.85,  # Dropped by 0.10
+        "ragas_mean_answer_relevancy": 0.92,
+        "p95_latency_ms": 100.0,
+        "cases": [
+            {
+                "test_id": "c-1",
+                "faithfulness_score": 1.0,
+                "relevance_score": 1.0,
+                "ragas_faithfulness": 0.7,
+                "ragas_reasoning": {"faithfulness": "Partially unsupported claims"},
+            }
+        ],
+    }
+
+    report = compare_runs(baseline_data, candidate_data)
+
+    assert report.delta_ragas_faithfulness == -0.10
+    assert report.delta_ragas_answer_relevancy == 0.0
+    assert any(r.metric == "ragas_faithfulness" for r in report.regressions)
+    ragas_reg = next(r for r in report.regressions if r.metric == "ragas_faithfulness")
+    assert ragas_reg.diff == -0.3
+    assert "Partially unsupported claims" in ragas_reg.reason

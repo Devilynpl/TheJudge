@@ -33,6 +33,7 @@ def evaluate_gate_rules(
     max_faithfulness_drop: float = 0.02,
     max_critical_regressions: int = 0,
     max_p95_latency_increase_ms: float = 250.0,
+    max_ragas_faithfulness_drop: Optional[float] = None,
 ) -> QualityGateResult:
     """Evaluate quality gate hard rules against an A/B ComparisonReport.
 
@@ -41,6 +42,7 @@ def evaluate_gate_rules(
         max_faithfulness_drop: Max permitted drop in faithfulness (default: 0.02).
         max_critical_regressions: Max permitted regressions with diff <= -0.5 (default: 0).
         max_p95_latency_increase_ms: Max permitted increase in P95 latency (default: 250.0 ms).
+        max_ragas_faithfulness_drop: Optional max permitted drop in RAGAS faithfulness.
 
     Returns:
         QualityGateResult model.
@@ -72,6 +74,14 @@ def evaluate_gate_rules(
         failure_reasons.append(
             f"Zbyt duży spadek średniej wierności ({delta_faith:+.4f} < -{max_faithfulness_drop:.2f})"
         )
+
+    # Rule 1b: Optional RAGAS faithfulness drop threshold
+    delta_ragas_f = data.get("delta_ragas_faithfulness")
+    if max_ragas_faithfulness_drop is not None and delta_ragas_f is not None:
+        if float(delta_ragas_f) < -max_ragas_faithfulness_drop:
+            failure_reasons.append(
+                f"Zbyt duży spadek średniej wierności RAGAS ({float(delta_ragas_f):+.4f} < -{max_ragas_faithfulness_drop:.2f})"
+            )
 
     # Rule 2: Zero critical regressions
     if len(critical_regressions) > max_critical_regressions:
@@ -191,6 +201,35 @@ def evaluate_absolute_gate_rules(
         failure_reasons.append(
             f"Opóźnienie P95 {p95_lat:.1f} ms przekracza próg SLO {cfg.max_p95_latency_ms:.1f} ms"
         )
+
+    # 9. RAGAS Thresholds (Optional)
+    if cfg.min_ragas_faithfulness is not None:
+        val = data.get("ragas_mean_faithfulness")
+        if val is not None and val < cfg.min_ragas_faithfulness:
+            failure_reasons.append(
+                f"Wierność RAGAS {val:.4f} poniżej progu {cfg.min_ragas_faithfulness:.4f}"
+            )
+
+    if cfg.min_ragas_answer_relevancy is not None:
+        val = data.get("ragas_mean_answer_relevancy")
+        if val is not None and val < cfg.min_ragas_answer_relevancy:
+            failure_reasons.append(
+                f"Trafność odpowiedzi RAGAS {val:.4f} poniżej progu {cfg.min_ragas_answer_relevancy:.4f}"
+            )
+
+    if cfg.min_ragas_context_precision is not None:
+        val = data.get("ragas_mean_context_precision")
+        if val is not None and val < cfg.min_ragas_context_precision:
+            failure_reasons.append(
+                f"Precyzja kontekstu RAGAS {val:.4f} poniżej progu {cfg.min_ragas_context_precision:.4f}"
+            )
+
+    if cfg.min_ragas_context_recall is not None:
+        val = data.get("ragas_mean_context_recall")
+        if val is not None and val < cfg.min_ragas_context_recall:
+            failure_reasons.append(
+                f"Pokrycie kontekstu RAGAS {val:.4f} poniżej progu {cfg.min_ragas_context_recall:.4f}"
+            )
 
     return QualityGateResult(
         passed=len(failure_reasons) == 0,

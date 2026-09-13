@@ -34,6 +34,11 @@ class ComparisonReport(BaseModel):
     delta_faithfulness: float = Field(..., description="Candidate mean faithfulness minus baseline.")
     delta_relevance: float = Field(..., description="Candidate mean relevance minus baseline.")
     delta_p95_latency_ms: float = Field(..., description="Candidate P95 latency minus baseline.")
+    # RAGAS metrics deltas
+    delta_ragas_faithfulness: Optional[float] = Field(default=None, description="Candidate Ragas faithfulness minus baseline.")
+    delta_ragas_answer_relevancy: Optional[float] = Field(default=None, description="Candidate Ragas answer relevancy minus baseline.")
+    delta_ragas_context_precision: Optional[float] = Field(default=None, description="Candidate Ragas context precision minus baseline.")
+    delta_ragas_context_recall: Optional[float] = Field(default=None, description="Candidate Ragas context recall minus baseline.")
     regressions: List[CaseDiff] = Field(default_factory=list, description="Cases where score degraded.")
     improvements: List[CaseDiff] = Field(default_factory=list, description="Cases where score improved.")
     critical_regressions_count: int = Field(default=0, description="Count of regressions with drop >= 0.5.")
@@ -109,9 +114,46 @@ def compare_runs(
                 )
             )
 
+        # Check RAGAS faithfulness diff if present
+        b_rf = b_case.get("ragas_faithfulness")
+        c_rf = c_case.get("ragas_faithfulness")
+        if b_rf is not None and c_rf is not None:
+            diff_rf = round(c_rf - b_rf, 2)
+            if diff_rf < 0:
+                reason = "Spadek wierności RAGAS"
+                if isinstance(c_case.get("ragas_reasoning"), dict):
+                    reason = c_case["ragas_reasoning"].get("faithfulness", reason)
+                regressions.append(
+                    CaseDiff(
+                        test_id=test_id,
+                        metric="ragas_faithfulness",
+                        baseline_score=b_rf,
+                        candidate_score=c_rf,
+                        diff=diff_rf,
+                        reason=reason,
+                    )
+                )
+
     delta_faith = candidate.get("mean_faithfulness", 0.0) - baseline.get("mean_faithfulness", 0.0)
     delta_rel = candidate.get("mean_relevance", 0.0) - baseline.get("mean_relevance", 0.0)
     delta_p95 = candidate.get("p95_latency_ms", 0.0) - baseline.get("p95_latency_ms", 0.0)
+
+    # Calculate RAGAS global deltas
+    delta_ragas_faith = None
+    if candidate.get("ragas_mean_faithfulness") is not None and baseline.get("ragas_mean_faithfulness") is not None:
+        delta_ragas_faith = round(candidate["ragas_mean_faithfulness"] - baseline["ragas_mean_faithfulness"], 4)
+
+    delta_ragas_rel = None
+    if candidate.get("ragas_mean_answer_relevancy") is not None and baseline.get("ragas_mean_answer_relevancy") is not None:
+        delta_ragas_rel = round(candidate["ragas_mean_answer_relevancy"] - baseline["ragas_mean_answer_relevancy"], 4)
+
+    delta_ragas_prec = None
+    if candidate.get("ragas_mean_context_precision") is not None and baseline.get("ragas_mean_context_precision") is not None:
+        delta_ragas_prec = round(candidate["ragas_mean_context_precision"] - baseline["ragas_mean_context_precision"], 4)
+
+    delta_ragas_rec = None
+    if candidate.get("ragas_mean_context_recall") is not None and baseline.get("ragas_mean_context_recall") is not None:
+        delta_ragas_rec = round(candidate["ragas_mean_context_recall"] - baseline["ragas_mean_context_recall"], 4)
 
     critical_regressions = [r for r in regressions if r.diff <= -0.5]
 
@@ -121,6 +163,10 @@ def compare_runs(
         delta_faithfulness=round(delta_faith, 4),
         delta_relevance=round(delta_rel, 4),
         delta_p95_latency_ms=round(delta_p95, 2),
+        delta_ragas_faithfulness=delta_ragas_faith,
+        delta_ragas_answer_relevancy=delta_ragas_rel,
+        delta_ragas_context_precision=delta_ragas_prec,
+        delta_ragas_context_recall=delta_ragas_rec,
         regressions=regressions,
         improvements=improvements,
         critical_regressions_count=len(critical_regressions),

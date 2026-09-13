@@ -65,3 +65,38 @@ def test_evaluate_gate_rules_fail_on_latency_slo_breach():
     result = evaluate_gate_rules(diff_data, max_p95_latency_increase_ms=250.0)
     assert result.passed is False
     assert any("opóźnienia P95" in r for r in result.failure_reasons)
+
+
+def test_evaluate_gate_rules_fail_on_ragas_faithfulness_drop():
+    diff_data = {
+        "delta_faithfulness": 0.0,
+        "delta_relevance": 0.0,
+        "delta_p95_latency_ms": 10.0,
+        "delta_ragas_faithfulness": -0.05,  # Drop > 0.03
+        "regressions": [],
+    }
+
+    result = evaluate_gate_rules(diff_data, max_ragas_faithfulness_drop=0.03)
+    assert result.passed is False
+    assert any("wierności RAGAS" in r for r in result.failure_reasons)
+
+
+def test_evaluate_absolute_gate_rules_with_ragas_config():
+    from judgekit.gate import evaluate_absolute_gate_rules
+    from judgekit.schemas import GateConfig
+
+    summary_data = {
+        "mean_faithfulness": 0.98,
+        "mean_relevance": 0.95,
+        "p95_latency_ms": 150.0,
+        "critical_failures": 0,
+        "ragas_mean_faithfulness": 0.82,  # below 0.90
+        "ragas_mean_answer_relevancy": 0.95,
+    }
+
+    cfg = GateConfig(min_ragas_faithfulness=0.90)
+    result = evaluate_absolute_gate_rules(summary_data, gate_config=cfg)
+
+    assert result.passed is False
+    assert any("Wierność RAGAS" in r for r in result.failure_reasons)
+

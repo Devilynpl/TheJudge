@@ -47,6 +47,12 @@ def main():
         default=0.02,
         help="Maximum allowed drop in mean faithfulness (default: 0.02).",
     )
+    parser.add_argument(
+        "--max-ragas-faith-drop",
+        type=float,
+        default=None,
+        help="Optional maximum allowed drop in mean RAGAS faithfulness.",
+    )
     args = parser.parse_args()
 
     baseline_path = Path(args.baseline)
@@ -70,6 +76,14 @@ def main():
     print(f"Porownane przypadki:   {report.total_compared_cases}")
     print(f"Delta Faithfulness:    {report.delta_faithfulness:+.4f}")
     print(f"Delta Relevance:       {report.delta_relevance:+.4f}")
+    if report.delta_ragas_faithfulness is not None:
+        print(f"Delta RAGAS Faith:     {report.delta_ragas_faithfulness:+.4f}")
+    if report.delta_ragas_answer_relevancy is not None:
+        print(f"Delta RAGAS Relevancy: {report.delta_ragas_answer_relevancy:+.4f}")
+    if report.delta_ragas_context_precision is not None:
+        print(f"Delta RAGAS Precision: {report.delta_ragas_context_precision:+.4f}")
+    if report.delta_ragas_context_recall is not None:
+        print(f"Delta RAGAS Recall:    {report.delta_ragas_context_recall:+.4f}")
     print(f"Delta P95 Latency:     {report.delta_p95_latency_ms:+.2f} ms")
     print(f"Wykryte poprawy (+):   {len(report.improvements)}")
     print(f"Wykryte regresje (-):  {len(report.regressions)}")
@@ -80,7 +94,7 @@ def main():
         print("SZCZEGOLY REGRESJI:")
         for reg in report.regressions:
             print(
-                f"  - Case [{reg.test_id}]: {reg.baseline_score} -> {reg.candidate_score} (diff: {reg.diff}). Uzasadnienie: {reg.reason}"
+                f"  - Case [{reg.test_id}] ({reg.metric}): {reg.baseline_score} -> {reg.candidate_score} (diff: {reg.diff}). Uzasadnienie: {reg.reason}"
             )
         print("-" * 60)
 
@@ -92,6 +106,14 @@ def main():
             file=sys.stderr,
         )
         failed = True
+
+    if args.max_ragas_faith_drop is not None and report.delta_ragas_faithfulness is not None:
+        if report.delta_ragas_faithfulness < -args.max_ragas_faith_drop:
+            print(
+                f"[FAIL] Spadek sredniej wiernosci RAGAS ({report.delta_ragas_faithfulness:+.4f}) przekroczyl limit (-{args.max_ragas_faith_drop}).",
+                file=sys.stderr,
+            )
+            failed = True
 
     if report.critical_regressions_count > args.max_regressions:
         print(

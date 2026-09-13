@@ -23,6 +23,12 @@ def main():
         help="Maximum allowed drop in mean faithfulness (default: 0.02).",
     )
     parser.add_argument(
+        "--max-ragas-faith-drop",
+        type=float,
+        default=None,
+        help="Optional maximum allowed drop in mean RAGAS faithfulness.",
+    )
+    parser.add_argument(
         "--max-critical-regressions",
         type=int,
         default=0,
@@ -46,6 +52,7 @@ def main():
         max_faithfulness_drop=args.max_faith_drop,
         max_critical_regressions=args.max_critical_regressions,
         max_p95_latency_increase_ms=args.max_p95_increase_ms,
+        max_ragas_faithfulness_drop=args.max_ragas_faith_drop,
     )
 
     print("=" * 60)

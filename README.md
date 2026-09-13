@@ -100,7 +100,7 @@ cd TheJudge
 pip install -r requirements.txt
 pip install -e .
 
-# 3. Uruchomienie pełnego zestawu testów jednostkowych (54 testy)
+# 3. Uruchomienie pełnego zestawu testów jednostkowych (72 testy)
 pytest tests/unit/ -v
 ```
 
@@ -108,10 +108,28 @@ pytest tests/unit/ -v
 
 ## 📊 Uruchamianie Narzędzi CLI
 
-### 1. Uruchomienie ewaluacji modelu (Runner)
+### 1. Uruchomienie ewaluacji modelu (Runner & Dual-Track Metrics)
+JudgeKit wspiera dwa niezależne tory metryk (LLM-as-a-Judge oraz RAGAS) z możliwością równoległej ewaluacji oraz tracingu retrievalu:
+
 ```bash
-python -m judgekit.cli_runner --golden-set tests/evals/data/golden_set.jsonl --output artifacts/candidate.json
+# Tryb 1: Tylko LLM-as-a-Judge (domyślny)
+python -m judgekit.cli_runner --metrics judge --output artifacts/candidate.json
+
+# Tryb 2: Tylko RAGAS (Faithfulness, Answer Relevancy, Context Precision, Context Recall)
+python -m judgekit.cli_runner --metrics ragas --output artifacts/candidate.json
+
+# Tryb 3: Dual-Track (Judge + RAGAS jednocześnie) + Tracing Arize Phoenix
+python -m judgekit.cli_runner --metrics both --trace-phoenix --output artifacts/candidate.json
 ```
+
+#### Kluczowe metryki RAGAS:
+- **Faithfulness:** stopień poparcia faktograficznego odpowiedzi w pobranym kontekście (grounding).
+- **Answer Relevancy:** bezpośredniość i adekwatność odpowiedzi względem intencji pytania.
+- **Context Precision:** stosunek relewantnych fragmentów w pobranych kontekstach (odfiltrowywanie szumu).
+- **Context Recall:** stopień pokrycia faktów z odpowiedzi referencyjnej w zwróconych kontekstach.
+
+#### Tracing Arize Phoenix (`--trace-phoenix`):
+Opcjonalne rejestrowanie pełnych spanów zapytań (query, retrieved contexts, scores obu torów, final answer, opóźnienie, tokeny) zintegrowane z Arize Phoenix / OpenInference lub eksportem do `artifacts/phoenix_traces.jsonl`. Moduł jest domyślnie wyłączony i w 100% odporny na brak zewnętrznego serwera Phoenix w CI.
 
 ### 2. Porównanie A/B (Baseline vs Candidate)
 ```bash
@@ -173,6 +191,10 @@ TheJudge/
 │   └── faza1.md ... faza10.md      # Odznaczone specyfikacje wymagań
 ├── src/
 │   └── judgekit/
+│       ├── metrics/
+│       │   └── ragas_metrics.py    # Moduł ewaluatora RAGAS (4 metryki + fallback)
+│       ├── tracing/
+│       │   └── phoenix.py          # Moduł observability & tracing Arize Phoenix
 │       ├── alignment.py            # Analiza zgodności z ekspertem (Cohen's Kappa)
 │       ├── chaos_eval.py           # Symulator awarii RAG i kalkulator RDR
 │       ├── cli_chaos.py            # CLI Chaos Evaluation
@@ -197,7 +219,7 @@ TheJudge/
 │   │   ├── calibration_results.csv # 30 próbek ślepej próby kalibracyjnej
 │   │   └── data/
 │   │       └── golden_set.jsonl    # Kanoniczny zbiór 20 zapytań referencyjnych
-│   └── unit/                       # 54 testy jednostkowe pytest
+│   └── unit/                       # 72 testy jednostkowe pytest
 ├── pyproject.toml
 ├── requirements.txt
 └── README.md

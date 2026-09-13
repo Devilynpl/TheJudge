@@ -84,6 +84,19 @@ def main():
         help="Optional path to Quality Gate JSON config to enforce gate check immediately.",
     )
     parser.add_argument(
+        "--metrics",
+        type=str,
+        choices=["judge", "ragas", "both"],
+        default="judge",
+        help="Metrics engine: 'judge' (LLM-as-a-Judge), 'ragas' (4 RAGAS metrics), or 'both' (concurrent dual-track).",
+    )
+    parser.add_argument(
+        "--trace-phoenix",
+        action="store_true",
+        default=False,
+        help="Enable Arize Phoenix retrieval & evaluation span tracing.",
+    )
+    parser.add_argument(
         "--output",
         type=str,
         default="artifacts/candidate.json",
@@ -116,13 +129,26 @@ def main():
     else:
         rag = StandaloneDemoRAG(test_cases)
 
+    from judgekit.metrics.ragas_metrics import RagasEvaluator
+    from judgekit.tracing.phoenix import PhoenixTracer
+
     judge = JudgeClient(llm_client=None)
-    runner = EvalRunner(rag_client=rag, judge_client=judge, max_concurrency=args.max_concurrency)
+    ragas_eval = RagasEvaluator() if args.metrics in ("ragas", "both") else None
+    tracer = PhoenixTracer(enabled=args.trace_phoenix)
+
+    runner = EvalRunner(
+        rag_client=rag,
+        judge_client=judge,
+        ragas_evaluator=ragas_eval,
+        metrics_mode=args.metrics,
+        tracer=tracer,
+        max_concurrency=args.max_concurrency,
+    )
 
     commit_sha = get_git_commit_sha()
     branch = get_git_branch()
 
-    print(f"Executing evaluation suite for commit [{commit_sha}] on branch [{branch}]...")
+    print(f"Executing evaluation suite for commit [{commit_sha}] on branch [{branch}] (metrics: {args.metrics})...")
     summary = asyncio.run(runner.run_suite(test_cases, commit_sha=commit_sha, branch=branch))
 
     out_path = runner.export_report(summary, args.output)
@@ -131,9 +157,18 @@ def main():
     print("=" * 60)
     print(f"Commit SHA:              {summary.commit_sha}")
     print(f"Branch:                  {summary.branch}")
+    print(f"Tryb metryk:             {summary.metrics_mode.upper()}")
     print(f"Przetestowane przypadki: {summary.total_cases}")
     print(f"Mean Faithfulness:       {summary.mean_faithfulness:.4f}")
     print(f"Mean Relevance:          {summary.mean_relevance:.4f}")
+    if summary.ragas_mean_faithfulness is not None:
+        print(f"RAGAS Faithfulness:      {summary.ragas_mean_faithfulness:.4f}")
+    if summary.ragas_mean_answer_relevancy is not None:
+        print(f"RAGAS Answer Relevancy:  {summary.ragas_mean_answer_relevancy:.4f}")
+    if summary.ragas_mean_context_precision is not None:
+        print(f"RAGAS Context Precision: {summary.ragas_mean_context_precision:.4f}")
+    if summary.ragas_mean_context_recall is not None:
+        print(f"RAGAS Context Recall:    {summary.ragas_mean_context_recall:.4f}")
     if summary.mean_citation_precision is not None:
         print(f"Mean Citation Precision: {summary.mean_citation_precision:.4f}")
     if summary.refusal_accuracy is not None:
@@ -152,6 +187,11 @@ def main():
     print(f"Calkowity koszt USD:     ${summary.total_cost_usd:.6f}")
     print("=" * 60)
     print(f"[SUCCESS] Raport zapisano w: {out_path.resolve()}")
+
+    if args.trace_phoenix and tracer.spans:
+        trace_path = Path("artifacts/phoenix_traces.jsonl")
+        tracer.export_traces_jsonl(trace_path)
+        print(f"[TRACING] Wyeksportowano {len(tracer.spans)} spanów Phoenix do: {trace_path.resolve()}")
 
     # If --gate-config provided, evaluate gate rules directly
     if args.gate_config:
