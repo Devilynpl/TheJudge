@@ -8,6 +8,13 @@ on:
       - 'tests/evals/data/**'
       - 'pyproject.toml'
       - 'requirements.txt'
+  push:
+    branches: [ main ]
+    paths:
+      - 'src/**'
+      - 'tests/evals/data/**'
+      - 'pyproject.toml'
+      - 'requirements.txt'
 
 permissions:
   contents: read
@@ -53,7 +60,8 @@ jobs:
 
       - name: Run Candidate Evaluation
         env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          # SECURITY FIX (MEDIUM-05): Was OPENAI_API_KEY — project uses Gemini, not OpenAI.
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           python -m judgekit.cli_runner \
             --golden-set tests/evals/data/golden_set.jsonl \
